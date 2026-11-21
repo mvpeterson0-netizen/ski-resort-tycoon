@@ -7,6 +7,9 @@ const MINOR_CONTOUR_M = 20
 const INDEX_CONTOUR_M = 100
 const MAX_ZOOM = 8
 
+/** Where the map opens: a terrain cell and how many metres fit across the screen. */
+export interface MapFocus { x: number; y: number; metresAcross: number }
+
 type View = { scale: number; tx: number; ty: number }
 type Probe = { x: number; y: number; elev: number; slope: number }
 
@@ -89,12 +92,25 @@ export interface MapViewProps {
   drawing?: boolean
   onStrokeMove?: (pts: [number, number][]) => void
   onStrokeEnd?: (pts: [number, number][]) => void
+  /** Custom base image covering the whole terrain (any resolution). Default: relief + contours. */
+  base?: (t: Terrain) => HTMLCanvasElement
+  /** Open centred here instead of filling the screen with the whole terrain. */
+  focus?: MapFocus
+  /** Hide the title header (the home view draws its own HUD). */
+  bare?: boolean
+  /** Extra zoom allowed beyond the default (multiplies MAX_ZOOM). */
+  zoomBoost?: number
+  /** Overlays above the canvas (HUD, popups). */
+  children?: ReactNode
 }
 
 export function MapView({
   terrainId, onBack, backLabel = 'Back to site', overlay, onTapCell, onTerrain, panel, actions,
-  drawing, onStrokeMove, onStrokeEnd,
+  drawing, onStrokeMove, onStrokeEnd, base: makeBase, focus, bare, zoomBoost = 1, children,
 }: MapViewProps) {
+  const maxZoom = MAX_ZOOM * zoomBoost
+  const focusRef = useRef(focus)
+  const makeBaseRef = useRef(makeBase)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const baseRef = useRef<HTMLCanvasElement | null>(null)
   const terrainRef = useRef<Terrain | null>(null)
@@ -128,7 +144,8 @@ export function MapView({
     const { scale, tx, ty } = viewRef.current
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * tx, dpr * ty)
     ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(base, 0, 0)
+    const t = terrainRef.current!
+    ctx.drawImage(base, 0, 0, t.width * RENDER_SCALE, t.height * RENDER_SCALE)
     overlayRef.current?.(ctx, scale)
   }
 
@@ -140,9 +157,10 @@ export function MapView({
     const v = viewRef.current
     const w = cv.clientWidth
     const h = cv.clientHeight
-    v.scale = Math.min(Math.max(v.scale, fitRef.current), fitRef.current * MAX_ZOOM)
-    const mw = base.width * v.scale
-    const mh = base.height * v.scale
+    const t = terrainRef.current!
+    v.scale = Math.min(Math.max(v.scale, fitRef.current), fitRef.current * maxZoom)
+    const mw = t.width * RENDER_SCALE * v.scale
+    const mh = t.height * RENDER_SCALE * v.scale
     v.tx = mw <= w ? (w - mw) / 2 : Math.min(0, Math.max(w - mw, v.tx))
     v.ty = mh <= h ? (h - mh) / 2 : Math.min(0, Math.max(h - mh, v.ty))
   }
@@ -154,7 +172,7 @@ export function MapView({
       .then(({ meta, terrain }) => {
         if (cancelled) return
         terrainRef.current = terrain
-        baseRef.current = renderBase(terrain)
+        baseRef.current = makeBaseRef.current ? makeBaseRef.current(terrain) : renderBase(terrain)
         onTerrainRef.current?.(terrain)
         setMeta(meta)
       })
@@ -171,16 +189,25 @@ export function MapView({
       const dpr = window.devicePixelRatio || 1
       cv.width = Math.round(cv.clientWidth * dpr)
       cv.height = Math.round(cv.clientHeight * dpr)
-      const base = baseRef.current!
-      fitRef.current = Math.min(cv.clientWidth / base.width, cv.clientHeight / base.height)
+      const t = terrainRef.current!
+      const bw = t.width * RENDER_SCALE
+      const bh = t.height * RENDER_SCALE
+      fitRef.current = Math.min(cv.clientWidth / bw, cv.clientHeight / bh)
       if (first) {
-        // Open filling the screen (cover); pinching out still shows the whole parcel.
         first = false
-        const cover = Math.max(cv.clientWidth / base.width, cv.clientHeight / base.height)
-        viewRef.current = {
-          scale: cover,
-          tx: (cv.clientWidth - base.width * cover) / 2,
-          ty: (cv.clientHeight - base.height * cover) / 2,
+        const f = focusRef.current
+        if (f) {
+          // Centre on the focus cell with the requested width of ground on screen.
+          const scale = (cv.clientWidth * t.cellM) / (f.metresAcross * RENDER_SCALE)
+          viewRef.current = {
+            scale,
+            tx: cv.clientWidth / 2 - (f.x + 0.5) * RENDER_SCALE * scale,
+            ty: cv.clientHeight / 2 - (f.y + 0.5) * RENDER_SCALE * scale,
+          }
+        } else {
+          // Open filling the screen (cover); pinching out still shows the whole parcel.
+          const cover = Math.max(cv.clientWidth / bw, cv.clientHeight / bh)
+          viewRef.current = { scale: cover, tx: (cv.clientWidth - bw * cover) / 2, ty: (cv.clientHeight - bh * cover) / 2 }
         }
       }
       clampView()
@@ -209,7 +236,7 @@ export function MapView({
     const zoomAt = (cx: number, cy: number, factor: number) => {
       const v = viewRef.current
       const old = v.scale
-      v.scale = Math.min(Math.max(old * factor, fitRef.current), fitRef.current * MAX_ZOOM)
+      v.scale = Math.min(Math.max(old * factor, fitRef.current), fitRef.current * maxZoom)
       const k = v.scale / old
       v.tx = cx - (cx - v.tx) * k
       v.ty = cy - (cy - v.ty) * k
@@ -312,15 +339,15 @@ export function MapView({
   const barM = metresPerPx ? [50, 100, 200, 250, 500, 1000, 2000].find((m) => m / metresPerPx >= 80) ?? 2000 : 0
 
   return (
-    <main className="map-screen">
-      <header className="map-head">
+    <main className={bare ? 'map-screen bare' : 'map-screen'}>
+      {!bare && <header className="map-head">
         <h2>{meta?.name ?? 'Loading terrain…'}</h2>
         {meta && (
           <span>
             {Math.round(meta.minElevM * 3.28084).toLocaleString()}–{Math.round(meta.maxElevM * 3.28084).toLocaleString()} ft
           </span>
         )}
-      </header>
+      </header>}
       <div className="map-wrap">
         <canvas ref={canvasRef} className={drawing ? 'map-canvas drawing' : 'map-canvas'} />
         {error && <p className="note map-error">Could not load terrain: {error}</p>}
@@ -337,7 +364,8 @@ export function MapView({
             <span>{barM >= 1000 ? `${barM / 1000} km` : `${barM} m`}</span>
           </div>
         )}
-        <p className="credit">Elevation: USGS 3DEP · contours {MINOR_CONTOUR_M} m</p>
+        <p className="credit">Elevation: USGS 3DEP{makeBase ? '' : ` · contours ${MINOR_CONTOUR_M} m`}</p>
+        {children}
       </div>
       {panel}
       <nav className="actions map-actions">
