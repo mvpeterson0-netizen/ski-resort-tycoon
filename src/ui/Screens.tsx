@@ -14,7 +14,9 @@ function Frame({ title, children, bar }: { title?: string; children: ReactNode; 
   )
 }
 
-export function TitleScreen({ onNew, onContinue, canContinue }: { onNew: () => void; onContinue: () => void; canContinue: boolean }) {
+export function TitleScreen({ onNew, onContinue, onSettings, canContinue }: {
+  onNew: () => void; onContinue: () => void; onSettings: () => void; canContinue: boolean
+}) {
   return (
     <main className="screen">
       <section className="hero">
@@ -30,6 +32,7 @@ export function TitleScreen({ onNew, onContinue, canContinue }: { onNew: () => v
       <nav className="actions">
         {canContinue && <button className="btn primary" onClick={onContinue}>Continue</button>}
         <button className={canContinue ? 'btn' : 'btn primary'} onClick={onNew}>New game</button>
+        <button className="btn" onClick={onSettings}>Settings</button>
       </nav>
       <p className="foot">Prototype · sim v{SIM_VERSION}</p>
     </main>

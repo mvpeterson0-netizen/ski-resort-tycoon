@@ -54,10 +54,16 @@ with a reduced off-season (building, hiring, financing, summer activities).
   elasticity, capped by lift capacity. Revenue = tickets + food; costs = per-lift, per-
   trail grooming, daily overhead (stand-in for staff until step 8). All PLACEHOLDER in
   `SEASON`. GameState v4 adds `season`, `lastSeason`, `ticketPriceUsd`.
+- **Difficulty sliders (owner request):** Settings screen (title + resort home) with
+  Snowfall and Finances sliders, 0 easy → 0.5 normal → 1 hard (`difficultySettings.ts`).
+  Snow scales the season snowfall factor range and warm-day chance; Finances scales
+  operating costs and guest demand. Normal = base tuning. Stored per game
+  (`GameState.difficulty`, v5) and as the default for new games (localStorage).
+  All multipliers PLACEHOLDER.
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v4; v2/v3 upgrade automatically, older versions are discarded).
+  (v5; v2–v4 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 

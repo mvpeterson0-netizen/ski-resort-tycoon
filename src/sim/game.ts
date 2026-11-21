@@ -9,10 +9,11 @@ import {
   type DayResult, type SeasonInputs, type SeasonState, type SeasonTotals,
 } from './season'
 import type { Site } from './sites'
+import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySettings'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
-// Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 4
+// v5: difficulty sliders. Older saves from v2 upward are upgraded in parseSave.
+export const GAME_STATE_VERSION = 5
 
 export interface Loan {
   id: string
@@ -69,9 +70,12 @@ export interface GameState {
   lastSeason: (SeasonTotals & { year: number }) | null
   /** Ticket price carried between seasons. */
   ticketPriceUsd: number
+  difficulty: DifficultySettings
 }
 
-export function newGame(siteId: string, plan: PurchasePlan, seed: number, parcelId?: string): GameState {
+export function newGame(
+  siteId: string, plan: PurchasePlan, seed: number, parcelId?: string, difficulty: DifficultySettings = DEFAULT_DIFFICULTY,
+): GameState {
   if (plan.problem) throw new Error(plan.problem)
   const loans: Loan[] = []
   if (plan.loanUsd > 0) {
@@ -100,6 +104,7 @@ export function newGame(siteId: string, plan: PurchasePlan, seed: number, parcel
     season: null,
     lastSeason: null,
     ticketPriceUsd: SEASON.defaultTicketPriceUsd,
+    difficulty: { ...difficulty },
   }
 }
 
@@ -120,6 +125,10 @@ export function parseSave(raw: unknown): GameState | null {
     g.lastSeason = null
     g.ticketPriceUsd = SEASON.defaultTicketPriceUsd
     g.phase = 'offseason'
+    g.version = 4
+  }
+  if (g.version === 4) {
+    g.difficulty = { ...DEFAULT_DIFFICULTY }
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -166,6 +175,8 @@ export function seasonInputs(g: GameState, site: Site): SeasonInputs {
     difficultyKinds: new Set(g.trails.map((t) => t.difficulty)).size,
     lifts: g.lifts.map((l) => ({ type: l.type, capacityPph: l.capacityPph })),
     trailCount: g.trails.length,
+    snowDifficulty: g.difficulty.snow,
+    financeDifficulty: g.difficulty.finance,
   }
 }
 
@@ -180,7 +191,7 @@ export function seasonBlocker(g: GameState): string | null {
 export function beginSeason(g: GameState, site: Site): GameState {
   const why = seasonBlocker(g)
   if (why) throw new Error(why)
-  return { ...g, phase: 'season', season: startSeason(g.year, g.seed, site.traits.avgSnowfallIn, g.ticketPriceUsd) }
+  return { ...g, phase: 'season', season: startSeason(g.year, g.seed, site.traits.avgSnowfallIn, g.ticketPriceUsd, g.difficulty.snow) }
 }
 
 export function setTicketPrice(g: GameState, priceUsd: number): GameState {
@@ -207,6 +218,11 @@ export function finishSeason(g: GameState): GameState {
     season: null,
     year: g.year + 1,
   }
+}
+
+export function setDifficulty(g: GameState, d: Partial<DifficultySettings>): GameState {
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+  return { ...g, difficulty: { snow: clamp01(d.snow ?? g.difficulty.snow), finance: clamp01(d.finance ?? g.difficulty.finance) } }
 }
 
 export { planPurchase }

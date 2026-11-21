@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { beginSeason, newGame, regionById, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
+import { beginSeason, newGame, regionById, setDifficulty, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
 import { BuildScreen } from './ui/Build'
 import { SeasonScreen } from './ui/Season'
+import { SettingsScreen } from './ui/Settings'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
 import { PurchaseScreen, ResortHome } from './ui/Purchase'
 import { RegionPicker, SiteDetail, SitePicker, TitleScreen } from './ui/Screens'
-import { clearGame, loadGame, saveGame } from './ui/storage'
+import { clearGame, loadDefaultDifficulty, loadGame, saveDefaultDifficulty, saveGame } from './ui/storage'
 
 type Nav =
   | { screen: 'title' }
@@ -20,6 +21,7 @@ type Nav =
   | { screen: 'resortMap' }
   | { screen: 'build' }
   | { screen: 'season' }
+  | { screen: 'settings'; back: 'title' | 'home' }
 
 export default function App() {
   const [nav, setNav] = useState<Nav>({ screen: 'title' })
@@ -31,6 +33,7 @@ export default function App() {
         <TitleScreen
           canContinue={!!game}
           onContinue={() => setNav({ screen: 'home' })}
+          onSettings={() => setNav({ screen: 'settings', back: 'title' })}
           onNew={() => {
             if (game && !window.confirm('Start a new game? Your current resort will be lost.')) return
             setNav({ screen: 'regions' })
@@ -83,7 +86,7 @@ export default function App() {
           onBuy={(plan) => {
             clearGame()
             // Seed from the clock once at game creation; everything after is deterministic.
-            const g = newGame(nav.site.id, plan, Date.now(), nav.parcel?.id)
+            const g = newGame(nav.site.id, plan, Date.now(), nav.parcel?.id, loadDefaultDifficulty())
             saveGame(g)
             setGame(g)
             setNav({ screen: 'home' })
@@ -91,12 +94,13 @@ export default function App() {
         />
       )
     case 'home':
-      if (!game) return <TitleScreen canContinue={false} onContinue={() => {}} onNew={() => setNav({ screen: 'regions' })} />
+      if (!game) return <TitleScreen canContinue={false} onContinue={() => {}} onSettings={() => setNav({ screen: 'settings', back: 'title' })} onNew={() => setNav({ screen: 'regions' })} />
       return (
         <ResortHome
           game={game}
           onMap={() => setNav({ screen: 'resortMap' })}
           onBuild={() => setNav({ screen: 'build' })}
+          onSettings={() => setNav({ screen: 'settings', back: 'home' })}
           onSeason={() => {
             if (game.phase !== 'season') {
               const site = siteById(game.siteId)!
@@ -107,6 +111,24 @@ export default function App() {
             setNav({ screen: 'season' })
           }}
           onQuit={() => setNav({ screen: 'title' })}
+        />
+      )
+    case 'settings':
+      return (
+        <SettingsScreen
+          difficulty={game?.difficulty ?? loadDefaultDifficulty()}
+          inGame={!!game}
+          onChange={(d) => {
+            saveDefaultDifficulty(d)
+            if (game) {
+              const g = setDifficulty(game, d)
+              saveGame(g)
+              setGame(g)
+            } else {
+              setNav({ ...nav }) // re-render with the new defaults
+            }
+          }}
+          onBack={() => setNav({ screen: game && nav.back === 'home' ? 'home' : 'title' })}
         />
       )
     case 'season':

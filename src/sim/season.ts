@@ -6,14 +6,15 @@
  * behaviour — none is sourced from real resort or climate data.
  */
 import type { LiftType } from './build'
+import { financeModifiers, snowModifiers } from './difficultySettings'
 import { createRng } from './rng'
 
 export const SEASON = {
   /** Opening day (month is 0-based) and length. */
   startMonth: 11, startDay: 1, lengthDays: 126,
   weather: {
-    /** Season snowfall = site average × a factor drawn once per season in this range. */
-    yearFactor: [0.55, 1.45] as const,
+    // Season snowfall factor range and warm-day multiplier come from the snow
+    // difficulty slider (difficultySettings.ts); Normal = 0.55–1.45 × site average.
     stormChance: 0.22,
     /** Fraction of new snow that ends up as packed base. */
     settleRatio: 0.35,
@@ -53,6 +54,9 @@ export const SEASON = {
 
 export interface SeasonInputs {
   avgSnowfallIn: number
+  /** 0 easy … 0.5 normal … 1 hard. Omitted = normal. */
+  snowDifficulty?: number
+  financeDifficulty?: number
   driveToMetroMin: number
   trailKm: number
   difficultyKinds: number
@@ -133,9 +137,11 @@ export function isHoliday(d: Date): boolean {
   return false
 }
 
-export function startSeason(gameYear: number, seed: number, avgSnowfallIn: number, ticketPriceUsd: number): SeasonState {
+export function startSeason(
+  gameYear: number, seed: number, avgSnowfallIn: number, ticketPriceUsd: number, snowDifficulty = 0.5,
+): SeasonState {
   const rng = createRng((seed ^ Math.imul(gameYear, 0x9e3779b1)) >>> 0)
-  const [lo, hi] = SEASON.weather.yearFactor
+  const [lo, hi] = snowModifiers(snowDifficulty).yearFactor
   return {
     year: gameYear,
     day: 0,
@@ -165,7 +171,9 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
     const mean = s.expectedSnowIn / (SEASON.lengthDays * W.stormChance)
     newSnowIn = Math.round(-Math.log(1 - rng.next()) * mean)
   }
-  const warm = rng.next() < lerp(W.warmChance[0], W.warmChance[1], progress)
+  const snowMod = snowModifiers(inp.snowDifficulty ?? 0.5)
+  const finMod = financeModifiers(inp.financeDifficulty ?? 0.5)
+  const warm = rng.next() < lerp(W.warmChance[0], W.warmChance[1], progress) * snowMod.warmChance
   let baseIn = s.baseIn + newSnowIn * W.settleRatio
   if (warm) baseIn -= lerp(W.warmMeltIn[0], W.warmMeltIn[1], rng.next())
   baseIn = Math.max(0, Math.round(baseIn * 10) / 10)
@@ -181,7 +189,7 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const terrainFactor = clamp(inp.trailKm / D.fullTerrainKm, 0.15, 1.2) * (0.8 + 0.1 * inp.difficultyKinds)
   const priceFactor = Math.pow(D.referencePriceUsd / s.ticketPriceUsd, D.priceElasticity)
   const noise = lerp(D.noise[0], D.noise[1], rng.next())
-  const wanted = open ? D.marketBase * dayFactor * snowFactor * accessFactor * terrainFactor * priceFactor * noise : 0
+  const wanted = open ? finMod.demand * D.marketBase * dayFactor * snowFactor * accessFactor * terrainFactor * priceFactor * noise : 0
 
   const comfort = liftComfortGuests(inp.lifts)
   const cap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
@@ -193,9 +201,9 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   // Money.
   const ticketRevenueUsd = guests * s.ticketPriceUsd
   const foodRevenueUsd = guests * M.foodPerGuestUsd
-  const costUsd = open
+  const costUsd = Math.round(finMod.costs * (open
     ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
-    : M.overheadClosedUsd
+    : M.overheadClosedUsd))
 
   const result: DayResult = {
     day: s.day,

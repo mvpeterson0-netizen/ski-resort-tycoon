@@ -168,3 +168,4 @@ b.down { color: #b03a2e; }
 .panel.price .btn { min-height: 44px; width: 52px; font-size: 1.3rem; padding: 0; }
 .panel.price b { font-size: 1.3rem; min-width: 56px; text-align: center; }
 .hint.center { text-align: center; }
+.hint.small { font-size: 0.82rem; margin-top: 8px; }

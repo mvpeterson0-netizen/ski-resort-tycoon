@@ -77,8 +77,8 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
 }
 
 /** Resort home: the hub screen once the player owns land. Grows in later steps. */
-export function ResortHome({ game, onMap, onBuild, onSeason, onQuit }: {
-  game: GameState; onMap: () => void; onBuild: () => void; onSeason: () => void; onQuit: () => void
+export function ResortHome({ game, onMap, onBuild, onSeason, onSettings, onQuit }: {
+  game: GameState; onMap: () => void; onBuild: () => void; onSeason: () => void; onSettings: () => void; onQuit: () => void
 }) {
   const inSeason = game.phase === 'season'
   const blocker = seasonBlocker(game)
@@ -139,7 +139,8 @@ export function ResortHome({ game, onMap, onBuild, onSeason, onQuit }: {
         )}
         <div className="row">
           {site?.terrainId && <button className="btn" onClick={onMap}>Land</button>}
-          <button className="btn" onClick={onQuit}>Main menu</button>
+          <button className="btn" onClick={onSettings}>Settings</button>
+          <button className="btn" onClick={onQuit}>Menu</button>
         </div>
       </nav>
     </main>
