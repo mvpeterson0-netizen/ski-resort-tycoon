@@ -1,5 +1,5 @@
 import {
-  ROLES, ROLE_SPECS, SEASON, advanceDay, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, setTicketPrice, siteById, staffing,
+  ROLES, ROLE_SPECS, SEASON, advanceDay, effectiveBase, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, setTicketPrice, siteById, staffing,
   type DayResult, type GameState,
 } from '../sim'
 import { usd } from './format'
@@ -42,7 +42,10 @@ export function SeasonScreen({ game, onChange, onExit }: {
   const season = game.season
   const today = season?.days.at(-1) ?? null
   const totals = season ? seasonTotals(season.days, season) : null
-  const cap = liftComfortGuests(seasonInputs(game, site).lifts)
+  const inputs = seasonInputs(game, site)
+  const cap = liftComfortGuests(inputs.lifts)
+  // Snowmaking holds covered runs at the made base, so show that depth (natural in small type).
+  const coverage = inputs.snowmaking?.coverage ?? 0
   const staff = staffing(game, site)
   const recent = (season?.days ?? []).slice(0, -1).flatMap((d) => (d.events ?? []).map((e) => ({ d, e }))).slice(-5).reverse()
   const shortRoles = ROLES.filter((r) => staff.needed[r] > 0 && staff.effects.ratios[r] < 0.999)
@@ -63,7 +66,13 @@ export function SeasonScreen({ game, onChange, onExit }: {
       </div>
       <div className="content">
         <section className="panel snow">
-          <div><span>Base</span><b>{season.baseIn.toFixed(0)}"</b></div>
+          <div>
+            <span>Base</span>
+            <b>{Math.round(effectiveBase(season.baseIn, coverage))}"</b>
+            {coverage > 0 && Math.round(effectiveBase(season.baseIn, coverage)) !== Math.round(season.baseIn) && (
+              <small className="block">{Math.round(season.baseIn)}" natural + made snow</small>
+            )}
+          </div>
           <div><span>New snow</span><b>{today ? `${today.newSnowIn}"` : '—'}</b></div>
           <div>
             <span>Conditions</span>

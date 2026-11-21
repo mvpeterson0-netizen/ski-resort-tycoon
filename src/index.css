@@ -217,3 +217,5 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .events li.good { border-left: 4px solid var(--green); }
 .events.compact li { font-size: 0.82rem; padding: 6px 10px; display: block; }
 .events.compact li b { margin-right: 6px; }
+.row.more { margin: 18px 0 8px; }
+.row.small .btn { padding: 0 8px; }

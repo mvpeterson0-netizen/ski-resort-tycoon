@@ -98,6 +98,9 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
           <div><span>Debt payments / yr</span><b>{usd(annualDebtService(game))}</b></div>
           <div><span>Reputation</span><b>{Math.round(game.reputation * 100)}%</b></div>
         </div>
+        {!inSeason && site && !blocker && (
+          <PricingPanel game={game} onChange={onChange} estimate={estimatePassSales(game.year, seasonInputs(game, site), game.passPriceUsd, game.ticketPriceUsd)} />
+        )}
         <h3 className="group">Mountain</h3>
         <dl className="traits">
           <div className="trait">
@@ -116,9 +119,6 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
         {game.trails.length === 0 && game.lifts.length === 0 && (
           <p className="note">Start by drawing a trail and placing a lift on your land.</p>
         )}
-        {!inSeason && site && !blocker && (
-          <PricingPanel game={game} onChange={onChange} estimate={estimatePassSales(game.year, seasonInputs(game, site), game.passPriceUsd, game.ticketPriceUsd)} />
-        )}
         {game.lastSeason && !inSeason && (
           <>
             <h3 className="group">Last season (year {game.lastSeason.year})</h3>
@@ -129,31 +129,26 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
             </dl>
           </>
         )}
-      </div>
-      <nav className="actions">
-        {inSeason ? (
-          <>
-            <button className="btn primary" onClick={onSeason}>Continue the season</button>
-            <button className="btn" onClick={onFinance}>Finance</button>
-          </>
-        ) : (
-          <>
-            {!blocker && <button className="btn primary" onClick={onSeason}>Start winter season</button>}
-            <div className="row">
-              {site?.terrainId && (
-                <button className={blocker ? 'btn primary' : 'btn'} onClick={onBuild}>Build</button>
-              )}
-              <button className="btn" onClick={onBase}>Base area</button>
-              <button className="btn" onClick={onStaff}>Staff</button>
-            </div>
-            {blocker && <p className="hint center">To open for winter: {blocker.toLowerCase()}.</p>}
-          </>
-        )}
-        <div className="row small">
-          {!inSeason && <button className="btn" onClick={onFinance}>Finance</button>}
+        <div className="row small more">
           {site?.terrainId && <button className="btn" onClick={onMap}>Land</button>}
           <button className="btn" onClick={onSettings}>Settings</button>
           <button className="btn" onClick={onQuit}>Menu</button>
+        </div>
+      </div>
+      <nav className="actions">
+        {inSeason ? (
+          <button className="btn primary" onClick={onSeason}>Continue the season</button>
+        ) : (
+          !blocker && <button className="btn primary" onClick={onSeason}>Start winter season</button>
+        )}
+        {blocker && !inSeason && <p className="hint center">To open for winter: {blocker.toLowerCase()}.</p>}
+        <div className="row small">
+          {!inSeason && site?.terrainId && (
+            <button className={blocker ? 'btn primary' : 'btn'} onClick={onBuild}>Build</button>
+          )}
+          {!inSeason && <button className="btn" onClick={onBase}>Base</button>}
+          <button className="btn" onClick={onStaff}>Staff</button>
+          <button className="btn" onClick={onFinance}>Finance</button>
         </div>
       </nav>
     </main>
