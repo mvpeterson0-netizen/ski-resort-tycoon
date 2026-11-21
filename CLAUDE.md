@@ -26,8 +26,11 @@ with a reduced off-season (building, hiring, financing, summer activities).
   green/blue/black difficulty colours (chosen over dark and minimal options).
 - **Land ownership (step 4):** land is bought outright (no Forest Service lease/permit
   model). Real-terrain sites are split into a 3×3 grid of parcels (`src/sim/parcels.ts`);
-  the player buys one starter parcel and expands into adjacent parcels later. Per-parcel
-  vertical and aspect are derived from the DEM; other traits are site-wide. Parcel price = acres × regional base $/acre × bounded factors
+  the starter parcel is always the site's road-access parcel (`Site.accessParcel`, where
+  base area, parking and the road go), and the player expands into edge-adjacent parcels
+  later (`buyableParcels`). Per-parcel vertical and aspect are derived from the DEM;
+  other traits are site-wide.
+  Parcel price = acres × regional base $/acre × bounded factors
   (metro access, interstate access, vertical, snowfall, aspect, water rights,
   permitting), all coefficients in `ECON` / `REGIONS` and all PLACEHOLDER.
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
@@ -87,8 +90,9 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 1. Scaffold, CLAUDE.md, CI, Pages deploy. (done; repo default branch is `main`)
 2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. (done)
 3. Map view with shaded relief for one real site; pan and pinch zoom. (done: Berthoud Pass, CO)
-4. Land purchase; starting cash and loan setup. ← current (awaiting review)
-5. Build trails and one lift with placement and cost.
+4. Land purchase; starting cash and loan setup. (done)
+5. Build trails and one lift with placement and cost. ← next: freehand trail drawing
+   (difficulty from slope along the line), tap bottom/top for lifts, within owned parcels.
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary.
 7. Cash flow, loans, year-end report.
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
