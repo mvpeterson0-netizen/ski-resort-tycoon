@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { newGame, regionById, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
+import { beginSeason, newGame, regionById, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
 import { BuildScreen } from './ui/Build'
+import { SeasonScreen } from './ui/Season'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
 import { PurchaseScreen, ResortHome } from './ui/Purchase'
@@ -18,6 +19,7 @@ type Nav =
   | { screen: 'home' }
   | { screen: 'resortMap' }
   | { screen: 'build' }
+  | { screen: 'season' }
 
 export default function App() {
   const [nav, setNav] = useState<Nav>({ screen: 'title' })
@@ -95,7 +97,25 @@ export default function App() {
           game={game}
           onMap={() => setNav({ screen: 'resortMap' })}
           onBuild={() => setNav({ screen: 'build' })}
+          onSeason={() => {
+            if (game.phase !== 'season') {
+              const site = siteById(game.siteId)!
+              const g = beginSeason(game, site)
+              saveGame(g)
+              setGame(g)
+            }
+            setNav({ screen: 'season' })
+          }}
           onQuit={() => setNav({ screen: 'title' })}
+        />
+      )
+    case 'season':
+      if (!game) return null
+      return (
+        <SeasonScreen
+          game={game}
+          onChange={(g) => { saveGame(g); setGame(g) }}
+          onExit={() => setNav({ screen: 'home' })}
         />
       )
     case 'build':

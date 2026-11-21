@@ -46,10 +46,18 @@ with a reduced off-season (building, hiring, financing, summer activities).
   gentle end of class, deep = steep end) on the selected parcel, plus a per-parcel mix
   bar. Same thresholds as trail grading (`src/sim/difficulty.ts`). Also a "Runs" toggle
   in build mode, on owned land.
+- **Winter season (step 6, `src/sim/season.ts`):** Dec 1 + 126 days, game year 1 =
+  2026-27. Daily weather from a seeded RNG (season snowfall = site average × a 0.55–1.45
+  year factor; storms; warm melt days more likely late season); opens at 18" base (no
+  snowmaking yet). Guests = market × day type (weekday/Sat/Sun; holidays = Dec 24–Jan 1,
+  MLK and Presidents' Day Sat–Mon) × snow × metro access × terrain size/variety × price
+  elasticity, capped by lift capacity. Revenue = tickets + food; costs = per-lift, per-
+  trail grooming, daily overhead (stand-in for staff until step 8). All PLACEHOLDER in
+  `SEASON`. GameState v4 adds `season`, `lastSeason`, `ticketPriceUsd`.
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v3; v2 upgrades automatically, older versions are discarded).
+  (v4; v2/v3 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -104,8 +112,9 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. (done)
 3. Map view with shaded relief for one real site; pan and pinch zoom. (done: Berthoud Pass, CO)
 4. Land purchase; starting cash and loan setup. (done)
-5. Build trails and one lift with placement and cost. ← current (awaiting review)
+5. Build trails and one lift with placement and cost. (done; + run-difficulty overlay)
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary.
+   ← current (awaiting review)
 7. Cash flow, loans, year-end report.
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 

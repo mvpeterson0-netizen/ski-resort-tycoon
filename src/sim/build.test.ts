@@ -133,7 +133,8 @@ describe('building into game state', () => {
     const { trails: _t, lifts: _l, ...v2 } = { ...fresh(), version: 2 }
     void _t; void _l
     const g = parseSave(JSON.parse(JSON.stringify(v2)))
-    expect(g?.version).toBe(3)
+    expect(g?.version).toBe(4)
+    expect(g?.season).toBeNull()
     expect(g?.trails).toEqual([])
   })
 })

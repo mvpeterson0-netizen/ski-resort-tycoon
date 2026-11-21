@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  ECON, annualDebtService, landPrice, parcelLabel, planPurchase, siteById, siteForParcel, totalDebt,
+  ECON, annualDebtService, landPrice, seasonBlocker, parcelLabel, planPurchase, siteById, siteForParcel, totalDebt,
   type GameState, type Parcel, type Region, type Site,
 } from '../sim'
 import { usd } from './format'
@@ -77,9 +77,11 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
 }
 
 /** Resort home: the hub screen once the player owns land. Grows in later steps. */
-export function ResortHome({ game, onMap, onBuild, onQuit }: {
-  game: GameState; onMap: () => void; onBuild: () => void; onQuit: () => void
+export function ResortHome({ game, onMap, onBuild, onSeason, onQuit }: {
+  game: GameState; onMap: () => void; onBuild: () => void; onSeason: () => void; onQuit: () => void
 }) {
+  const inSeason = game.phase === 'season'
+  const blocker = seasonBlocker(game)
   const site = siteById(game.siteId)
   const liftCap = game.lifts.reduce((s, l) => s + l.capacityPph, 0)
   const count = (d: string) => game.trails.filter((t) => t.difficulty === d).length
@@ -87,7 +89,7 @@ export function ResortHome({ game, onMap, onBuild, onQuit }: {
     <main className="screen">
       <h2 className="screen-title">{site?.name ?? game.siteId}</h2>
       <div className="content">
-        <p className="tagline">Year {game.year} · Off-season</p>
+        <p className="tagline">Year {game.year} · {inSeason ? `Winter season, day ${game.season?.day ?? 0}` : 'Off-season'}</p>
         <div className="kpis">
           <div><span>Cash</span><b>{usd(game.cashUsd)}</b></div>
           <div><span>Debt</span><b>{usd(totalDebt(game))}</b></div>
@@ -112,9 +114,29 @@ export function ResortHome({ game, onMap, onBuild, onQuit }: {
         {game.trails.length === 0 && game.lifts.length === 0 && (
           <p className="note">Start by drawing a trail and placing a lift on your land.</p>
         )}
+        {game.lastSeason && !inSeason && (
+          <>
+            <h3 className="group">Last season (year {game.lastSeason.year})</h3>
+            <dl className="traits">
+              <div className="trait"><dt>Days open</dt><dd>{game.lastSeason.openDays} of {game.lastSeason.days}</dd></div>
+              <div className="trait"><dt>Skier visits</dt><dd>{game.lastSeason.guests.toLocaleString()}</dd></div>
+              <div className="trait"><dt>Operating profit</dt><dd>{usd(game.lastSeason.netUsd)}</dd></div>
+            </dl>
+          </>
+        )}
       </div>
       <nav className="actions">
-        {site?.terrainId && <button className="btn primary" onClick={onBuild}>Build on the mountain</button>}
+        {inSeason ? (
+          <button className="btn primary" onClick={onSeason}>Continue the season</button>
+        ) : (
+          <>
+            {!blocker && <button className="btn primary" onClick={onSeason}>Start winter season</button>}
+            {site?.terrainId && (
+              <button className={blocker ? 'btn primary' : 'btn'} onClick={onBuild}>Build on the mountain</button>
+            )}
+            {blocker && <p className="hint center">To open for winter: {blocker.toLowerCase()}.</p>}
+          </>
+        )}
         <div className="row">
           {site?.terrainId && <button className="btn" onClick={onMap}>Land</button>}
           <button className="btn" onClick={onQuit}>Main menu</button>

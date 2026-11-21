@@ -4,9 +4,15 @@
  */
 import type { Difficulty, LiftPlan, LiftType, Pt, TrailPlan } from './build'
 import { ECON, planPurchase, type PurchasePlan } from './economy'
+import {
+  SEASON, seasonOver, seasonTotals, simulateDay, startSeason,
+  type DayResult, type SeasonInputs, type SeasonState, type SeasonTotals,
+} from './season'
+import type { Site } from './sites'
 
-// v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts; v2 saves are upgraded.
-export const GAME_STATE_VERSION = 3
+// v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
+// Older saves from v2 upward are upgraded in parseSave.
+export const GAME_STATE_VERSION = 4
 
 export interface Loan {
   id: string
@@ -41,7 +47,7 @@ export interface Lift {
   costUsd: number
 }
 
-export type Phase = 'offseason'
+export type Phase = 'offseason' | 'season'
 
 export interface GameState {
   version: typeof GAME_STATE_VERSION
@@ -57,6 +63,12 @@ export interface GameState {
   loans: Loan[]
   trails: Trail[]
   lifts: Lift[]
+  /** Active winter season, or null in the off-season. */
+  season: SeasonState | null
+  /** Totals of the most recently finished season. */
+  lastSeason: (SeasonTotals & { year: number }) | null
+  /** Ticket price carried between seasons. */
+  ticketPriceUsd: number
 }
 
 export function newGame(siteId: string, plan: PurchasePlan, seed: number, parcelId?: string): GameState {
@@ -85,6 +97,9 @@ export function newGame(siteId: string, plan: PurchasePlan, seed: number, parcel
     loans,
     trails: [],
     lifts: [],
+    season: null,
+    lastSeason: null,
+    ticketPriceUsd: SEASON.defaultTicketPriceUsd,
   }
 }
 
@@ -98,6 +113,13 @@ export function parseSave(raw: unknown): GameState | null {
   if (g.version === 2) {
     g.trails = []
     g.lifts = []
+    g.version = 3
+  }
+  if (g.version === 3) {
+    g.season = null
+    g.lastSeason = null
+    g.ticketPriceUsd = SEASON.defaultTicketPriceUsd
+    g.phase = 'offseason'
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -134,6 +156,57 @@ export function buildLift(g: GameState, plan: LiftPlan, name?: string): BuildRes
     lengthM: plan.lengthM, verticalM: plan.verticalM, capacityPph: plan.capacityPph, costUsd: plan.costUsd,
   }
   return { ok: true, game: { ...g, cashUsd: g.cashUsd - plan.costUsd, lifts: [...g.lifts, lift] } }
+}
+
+export function seasonInputs(g: GameState, site: Site): SeasonInputs {
+  return {
+    avgSnowfallIn: site.traits.avgSnowfallIn,
+    driveToMetroMin: site.traits.driveToMetroMin,
+    trailKm: g.trails.reduce((s, t) => s + t.lengthM, 0) / 1000,
+    difficultyKinds: new Set(g.trails.map((t) => t.difficulty)).size,
+    lifts: g.lifts.map((l) => ({ type: l.type, capacityPph: l.capacityPph })),
+    trailCount: g.trails.length,
+  }
+}
+
+/** Why the season cannot start yet, or null if it can. */
+export function seasonBlocker(g: GameState): string | null {
+  if (g.phase === 'season') return 'Season already running'
+  if (!g.lifts.length) return 'Build at least one lift'
+  if (!g.trails.length) return 'Build at least one trail'
+  return null
+}
+
+export function beginSeason(g: GameState, site: Site): GameState {
+  const why = seasonBlocker(g)
+  if (why) throw new Error(why)
+  return { ...g, phase: 'season', season: startSeason(g.year, g.seed, site.traits.avgSnowfallIn, g.ticketPriceUsd) }
+}
+
+export function setTicketPrice(g: GameState, priceUsd: number): GameState {
+  const p = Math.max(10, Math.min(250, Math.round(priceUsd)))
+  return { ...g, ticketPriceUsd: p, season: g.season ? { ...g.season, ticketPriceUsd: p } : null }
+}
+
+/** Simulate one day; cash moves by the day's net. Ends the season after the last day. */
+export function advanceDay(g: GameState, site: Site): { game: GameState; result: DayResult } {
+  if (!g.season || g.phase !== 'season') throw new Error('No season running')
+  const { season, result } = simulateDay(g.season, seasonInputs(g, site))
+  let next: GameState = { ...g, season, cashUsd: g.cashUsd + result.netUsd }
+  if (seasonOver(season)) next = finishSeason(next)
+  return { game: next, result }
+}
+
+/** Close the season. Year-end P&L and debt service arrive in step 7. */
+export function finishSeason(g: GameState): GameState {
+  if (!g.season) return g
+  return {
+    ...g,
+    phase: 'offseason',
+    lastSeason: { ...seasonTotals(g.season.days), year: g.season.year },
+    season: null,
+    year: g.year + 1,
+  }
 }
 
 export { planPurchase }
