@@ -168,6 +168,15 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
   commit `public/sites/<id>.dem.bin` + `.json`. Format: 10 m cells, 4 km square,
   uint16 LE decimetres, north-up (~320 KB). The game never fetches tiles at runtime.
 - Real sites list unsourced traits in `unverified`; the UI marks them "est.".
+- Roads (preview, step 9 proposal): **USGS National Transportation Dataset** state shapefile
+  zips on the same public bucket (`StagedProducts/Tran/Shape/`). Its metadata calls it public
+  domain, no use constraints, USGS acknowledgment appreciated (read from the .xml on the bucket;
+  usgs.gov itself not checked). Add `"roadsState"` to `scripts/site-sources.json`, run
+  `npm run build:roads -- <id>` (~10 s, range requests), commit `public/sites/<id>.roads.json`.
+  OpenStreetMap/Overpass and Census TIGER are blocked from the build environment.
+- Building art (preview): pre-rendered 3D sprites. `tools/sprites/` (dev-only three.js studio,
+  original generic designs) → `npm run build:sprites` (headless Chromium via the global
+  Playwright) → commit `public/sprites/*.png` + `sprites.json`. No 3D at runtime.
 
 ## Open questions / unverified (do not treat as settled)
 - **Terrain licence: NOT VERIFIED.** We believe USGS-produced data is public domain with a

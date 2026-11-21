@@ -244,3 +244,7 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .sheet-scroll { overflow-x: auto; }
 .map-screen.bare .north { top: auto; bottom: 34px; right: auto; left: 10px; }
 .map-screen.bare .scalebar { display: none; }
+.sprite-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.sprite-row figure { margin: 0; background: #eef2f7; border-radius: 14px; padding: 8px; text-align: center; }
+.sprite-row img { display: block; max-width: 100%; height: auto; max-height: 220px; }
+.sprite-row figcaption { font-size: 0.8rem; color: var(--muted); }

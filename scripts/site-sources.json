@@ -8,7 +8,9 @@
       "centerLon": -105.777,
       "sizeM": 4000,
       "cellM": 10,
-      "tile": "n40w106"
+      "tile": "n40w106",
+      "roadsState": "Colorado"
     }
-  ]
+  ],
+  "_comment_roads": "Roads: add \"roadsState\" (NTD state file name, e.g. Colorado) and run `npm run build:roads -- <id>` once; output public/sites/<id>.roads.json is committed. Source: USGS National Transportation Dataset (prd-tnm.s3.amazonaws.com StagedProducts/Tran/Shape)."
 }

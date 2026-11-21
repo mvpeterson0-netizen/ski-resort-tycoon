@@ -3,16 +3,18 @@
  * and building level art. Reached with ?preview=village. Nothing here touches saves.
  * The resorts drawn are sample layouts generated from the real terrain, not a game state.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  computeParcels, decodeDem, elevAt, planTrail, slopeDeg, suggestBaseSites, VILLAGE,
-  type BaseSite, type Parcel, type Pt, type Terrain, type TerrainMeta,
+  accessRoadCostUsd, computeParcels, decodeDem, elevAt, planTrail, slopeDeg, suggestBaseSites, VILLAGE,
+  type BaseSite, type Parcel, type Pt, type Road, type Terrain, type TerrainMeta,
 } from '../../sim'
 import { MapView, RENDER_SCALE } from '../MapView'
 import {
-  BUILDING_LEVELS, drawBuilding, drawDiffSign, drawLift, drawParking, drawTrailSwath, paintTerrain,
-  type BuildingKind, type Diff, type LiftKind,
+  drawDiffSign, drawLabel, drawLift, drawParking, drawRoad, drawRoadLabel, drawSprite, drawTrailSwath, loadSprites,
+  paintGround, paintTreeLayer, plantTrees, TREE_SCALE,
+  type Diff, type LiftKind, type Sprites,
 } from './art'
+import { usd } from '../format'
 
 const TERRAIN_ID = 'co-berthoud-pass'
 const ACCESS = 'r1c1'
@@ -33,14 +35,36 @@ function useTerrain() {
   return t
 }
 
+/** Real roads (USGS NTD) for the site, preprocessed by scripts/build-site-roads.mjs. */
+function useRoads() {
+  const [roads, setRoads] = useState<Road[] | null>(null)
+  useEffect(() => {
+    fetch(`${import.meta.env.BASE_URL}sites/${TERRAIN_ID}.roads.json`).then((r) => r.json()).then((d) => setRoads(d.roads)).catch(() => setRoads([]))
+  }, [])
+  return roads
+}
+
+function useSprites() {
+  const [sp, setSp] = useState<Sprites | null>(null)
+  useEffect(() => { loadSprites().then(setSp) }, [])
+  return sp
+}
+
+/** The data names the south-west stretch of US-40 "W Park Ave"; show both as US-40. */
+const roadLabel = (r: Road) => (/hwy 40|park ave/i.test(r.name) ? 'US-40' : r.name.replace(/\b(\w)(\w*)/g, (_, a, b) => a + b.toLowerCase()))
+
 // ---------- sample resort layout from real terrain ----------
 
 interface SampleLift { kind: LiftKind; bottom: Pt; top: Pt; name: string }
 interface SampleTrail { pts: Pt[]; diff: Diff; name: string }
 interface Layout {
   base: BaseSite
-  /** Uphill unit vector (cells). */
-  u: [number, number]
+  /** Village centre (cells): the base spot pushed back from the road to leave room for parking. */
+  v: Pt
+  /** Unit vector from the road toward the village (cells), and along the road. */
+  r: [number, number]
+  tg: [number, number]
+  join: Pt
   lifts: SampleLift[]
   trails: SampleTrail[]
 }
@@ -94,74 +118,181 @@ function trailsFor(t: Terrain, top: Pt, end: Pt, parcels: Parcel[], owned: strin
   return out
 }
 
-function makeLayout(t: Terrain, stage: 1 | 2): Layout | null {
+function makeLayout(t: Terrain, stage: 1 | 2, roads: Road[]): Layout | null {
   const parcels = computeParcels(t)
   const access = parcels.find((p) => p.id === ACCESS)!
-  const [base] = suggestBaseSites(t, access, 1)
+  const [base] = suggestBaseSites(t, access, 1, roads)
   if (!base) return null
   const land = stage === 1 ? [access] : parcels.filter((p) => ['r1c1', 'r0c1', 'r1c2', 'r1c0'].includes(p.id))
   const owned = land.map((p) => p.id)
-  const b: Pt = [base.x, base.y]
-  const first = findTop(t, b, land, [], stage === 1 ? 900 : 1200)
-  if (!first) return null
-  const rad = (first.ang * Math.PI) / 180
-  const u: [number, number] = [Math.sin(rad), -Math.cos(rad)]
-  const n: [number, number] = [-u[1], u[0]]
-  const at = (along: number, side: number): Pt => [b[0] + (u[0] * along + n[0] * side) / t.cellM, b[1] + (u[1] * along + n[1] * side) / t.cellM]
+  // Orientation from the road: r points from the road to the base, tg runs along the road.
+  const join: Pt = base.roadJoin ?? [base.x, base.y + 10]
+  let r: [number, number] = [base.x - join[0], base.y - join[1]]
+  const rl = Math.hypot(...r) || 1
+  r = [r[0] / rl, r[1] / rl]
+  const tg: [number, number] = [-r[1], r[0]]
+  const off = Math.max(rl * t.cellM, 110) // leave room for parking between road and lodge
+  const v: Pt = [join[0] + (r[0] * off) / t.cellM, join[1] + (r[1] * off) / t.cellM]
+  const at = (away: number, along: number): Pt => [v[0] + (r[0] * away + tg[0] * along) / t.cellM, v[1] + (r[1] * away + tg[1] * along) / t.cellM]
+  const roadward = (Math.atan2(-r[0], r[1]) * 180) / Math.PI // heading back toward the road
   const lifts: SampleLift[] = []
   const trails: SampleTrail[] = []
-  const b1 = at(55, -15)
+  const b1 = at(60, -25)
+  const first = findTop(t, b1, land, [roadward], stage === 1 ? 900 : 1200)
+  if (!first) return null
   lifts.push({ kind: 'fixedDouble', bottom: b1, top: first.top, name: 'Summit Double' })
-  trails.push(...trailsFor(t, first.top, at(40, 20), parcels, owned, stage === 1 ? ['Pass Run', 'Easy Street'] : ['Pass Run', 'Easy Street', 'Cornice']))
+  trails.push(...trailsFor(t, first.top, at(45, 10), parcels, owned, ['Pass Run', 'Easy Street']))
   if (stage === 2) {
-    const second = findTop(t, at(30, -60), land, [first.ang], 1100)
+    const b2 = at(55, 45)
+    const second = findTop(t, b2, land, [first.ang, roadward], 1100)
     if (second) {
-      lifts.push({ kind: 'fixedQuad', bottom: at(30, -60), top: second.top, name: 'Divide Quad' })
-      trails.push(...trailsFor(t, second.top, at(10, -40), parcels, owned, ['Continental', 'Timberline', 'Headwall']))
+      lifts.push({ kind: 'fixedQuad', bottom: b2, top: second.top, name: 'Divide Quad' })
+      trails.push(...trailsFor(t, second.top, at(40, 60), parcels, owned, ['Continental', 'Timberline']))
     }
-    lifts.push({ kind: 'ropeTow', bottom: at(-10, 80), top: at(230, 95), name: 'Bunny Tow' })
-    trails.push(...trailsFor(t, at(230, 95), at(-5, 70), parcels, owned, ['Bunny Hill']))
+    lifts.push({ kind: 'ropeTow', bottom: at(30, -120), top: at(250, -130), name: 'Bunny Tow' })
+    trails.push(...trailsFor(t, at(250, -130), at(25, -110), parcels, owned, ['Bunny Hill']))
   }
-  return { base, u, lifts, trails }
+  return { base, v, r, tg, join, lifts, trails }
 }
 
 // ---------- drawing the resort ----------
 
 interface VillageLevels { lodge: number; rentals: number; school: number; housing: number; parking: number; shop: number }
 
-function drawResort(ctx: CanvasRenderingContext2D, t: Terrain, L: Layout, lv: VillageLevels, scale: number) {
+const NAMES: Record<string, string> = { lodge: 'Day Lodge', rentals: 'Rentals', school: 'Ski School', housing: 'Staff Housing', ticket: 'Tickets', shop: 'Maintenance' }
+const TERMINAL: Record<LiftKind, number> = { ropeTow: 1, fixedDouble: 2, fixedQuad: 3 }
+
+interface Item { kind: string; level: number; c: Pt; r: number }
+
+/** Where each base-area building sits (cells) and its clearing radius (m). */
+function villageItems(t: Terrain, L: Layout, lv: VillageLevels): { items: Item[]; lot: Pt } {
+  const at = (away: number, along: number): Pt => [L.v[0] + (L.r[0] * away + L.tg[0] * along) / t.cellM, L.v[1] + (L.r[1] * away + L.tg[1] * along) / t.cellM]
+  // Spacing grows with the lodge so a small base stays compact.
+  const f = 0.55 + 0.12 * lv.lodge
+  const items: Item[] = [
+    { kind: 'lodge', level: lv.lodge, c: at(5, 0), r: 25 + 14 * lv.lodge },
+    { kind: 'ticket', level: 1, c: at(45, 40 * f), r: 14 },
+    { kind: 'rentals', level: lv.rentals, c: at(0, 95 * f), r: 32 },
+    { kind: 'school', level: lv.school, c: at(22, -100 * f), r: 40 },
+    { kind: 'housing', level: lv.housing, c: at(-30, 185 * f), r: 48 },
+    { kind: 'shop', level: lv.shop, c: at(-30, -175 * f), r: 36 },
+  ].filter((it) => it.level > 0)
+  for (const l of L.lifts) items.push({ kind: 'terminal', level: TERMINAL[l.kind], c: l.bottom, r: 22 })
+  return { items, lot: at(-70, 0) }
+}
+
+const segDist = (x: number, y: number, a: Pt, b: Pt) => {
+  const vx = b[0] - a[0], vy = b[1] - a[1]
+  const l2 = vx * vx + vy * vy
+  const u = l2 ? Math.max(0, Math.min(1, ((x - a[0]) * vx + (y - a[1]) * vy) / l2)) : 0
+  return Math.hypot(x - a[0] - vx * u, y - a[1] - vy * u)
+}
+
+/** Trees that survive clearing for trails, lifts, roads, the village and parking. */
+function clearTrees(t: Terrain, trees: Float32Array, L: Layout, lv: VillageLevels, roads: Road[]): Float32Array {
+  const lines: [Pt, Pt, number][] = []
+  const add = (pts: Pt[], halfM: number) => { for (let i = 1; i < pts.length; i++) lines.push([pts[i - 1], pts[i], halfM / t.cellM]) }
+  for (const tr of L.trails) add(tr.pts, 26)
+  for (const l of L.lifts) add([l.bottom, l.top], 10)
+  for (const r of roads) for (const p of r.parts) add(p, 14)
+  add([L.join, L.v], 12)
+  const { items, lot } = villageItems(t, L, lv)
+  const discs: [Pt, number][] = [...items.map((it): [Pt, number] => [it.c, (it.r + 16) / t.cellM]), [lot, (60 + 22 * lv.parking) / t.cellM]]
+  const keep: number[] = []
+  for (let i = 0; i < trees.length; i += 3) {
+    const x = trees[i], y = trees[i + 1]
+    if (discs.some(([c, r]) => Math.hypot(x - c[0], y - c[1]) < r)) continue
+    if (lines.some(([a, b, h]) => Math.abs(x - a[0]) < 200 && segDist(x, y, a, b) < h)) continue
+    keep.push(x, y, trees[i + 2])
+  }
+  return new Float32Array(keep)
+}
+
+/** Above this view scale, trees are drawn as 3D sprites instead of the painted layer. */
+const TREE_SPRITE_SCALE = 2.6
+
+function drawResort(ctx: CanvasRenderingContext2D, t: Terrain, L: Layout, lv: VillageLevels, scale: number, roads: Road[], sprites: Sprites, forest: { layer: HTMLCanvasElement; kept: Float32Array }) {
   const S = RENDER_SCALE
   const k = S / t.cellM // overlay px per metre
   const px = (p: Pt): [number, number] => [(p[0] + 0.5) * S, (p[1] + 0.5) * S]
-  const { u } = L
-  const n: [number, number] = [-u[1], u[0]]
-  const b: Pt = [L.base.x, L.base.y]
-  const at = (along: number, side: number) => px([b[0] + (u[0] * along + n[0] * side) / t.cellM, b[1] + (u[1] * along + n[1] * side) / t.cellM])
+  const at = (away: number, along: number) => px([L.v[0] + (L.r[0] * away + L.tg[0] * along) / t.cellM, L.v[1] + (L.r[1] * away + L.tg[1] * along) / t.cellM])
 
+  const sprite = scale > TREE_SPRITE_SCALE
+  if (!sprite) ctx.drawImage(forest.layer, 0, 0, t.width * S, t.height * S)
   for (const tr of L.trails) drawTrailSwath(ctx, tr.pts.map(px), k, tr.diff)
-  // Plowed base area and access road (toward the downhill side).
-  ctx.fillStyle = 'rgba(232, 226, 214, 0.97)'
-  const c = at(-20, 20)
-  const rr = (60 + 30 * lv.lodge) * k
-  ctx.beginPath(); ctx.ellipse(c[0], c[1], rr * 1.15, rr, 0, 0, Math.PI * 2); ctx.fill()
-  ctx.strokeStyle = '#8f8a82'
-  ctx.lineWidth = 9 * k
-  const r0 = at(-60, 0), r1 = at(-420, -140)
-  ctx.beginPath(); ctx.moveTo(...r0); ctx.quadraticCurveTo(...at(-250, 60), ...r1); ctx.stroke()
-  drawParking(ctx, lv.parking, ...at(-95 - 15 * lv.lodge, 10), k, 0.7, u[0], u[1])
+  const vi = villageItems(t, L, lv)
+  const items = vi.items.map((it) => ({ ...it, p: px(it.c) }))
+  const lot = px(vi.lot)
 
-  // Draw buildings back (north) to front (south) so overlaps look right.
-  const items: { kind: BuildingKind; level: number; p: [number, number] }[] = [
-    { kind: 'lodge', level: lv.lodge, p: at(-30, 0) },
-    { kind: 'ticket', level: 1, p: at(25, 20) },
-    { kind: 'rentals', level: lv.rentals, p: at(-15, 85) },
-    { kind: 'school', level: lv.school, p: at(15, 130) },
-    { kind: 'housing', level: lv.housing, p: at(-90, 190) },
-    { kind: 'shop', level: lv.shop, p: at(-50, -55 - 20 * lv.lodge) },
-  ]
-  items.sort((a, b2) => a.p[1] - b2.p[1])
-  for (const it of items) drawBuilding(ctx, it.kind, it.level, it.p[0], it.p[1], k)
-  for (const l of L.lifts) drawLift(ctx, px(l.bottom), px(l.top), k, l.kind)
+  // Plowed, trodden snow around everything built: soft overlapping discs.
+  ctx.save()
+  ctx.fillStyle = 'rgba(229, 232, 236, 0.97)'
+  ctx.shadowColor = 'rgba(229, 232, 236, 0.95)'
+  ctx.shadowBlur = 8 * k * scale
+  for (const it of [...items, { p: lot, r: 48 + 18 * lv.parking }]) {
+    ctx.beginPath(); ctx.arc(it.p[0], it.p[1], (it.r + 8) * k, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+  drawParking(ctx, lv.parking, ...lot, k, 0.7, -L.r[0], -L.r[1])
+
+  // Real roads, then the access drive from the highway into the village.
+  for (const road of roads) for (const part of road.parts) drawRoad(ctx, part.map(px), k, road.cls, scale)
+  drawRoad(ctx, [px(L.join), at(-90, 0), at(-25, 0)], k, 5, scale)
+  if (scale < 3) {
+    const seen = new Set<string>()
+    for (const road of [...roads].sort((a, b) => b.parts[0].length - a.parts[0].length)) {
+      const name = roadLabel(road)
+      if (!name || seen.has(name)) continue
+      seen.add(name)
+      drawRoadLabel(ctx, road.parts[0].map(px), name, scale)
+    }
+  }
+
+  // Buildings: drawn north to south so nearer ones overlap farther ones.
+  for (const l of L.lifts) drawLift(ctx, px(l.bottom), px(l.top), k, l.kind, 0, false)
+  // Visible trees (sprite mode) join the buildings in one back-to-front list.
+  const draw: { y: number; fn: () => void }[] = []
+  const labels: [number, number, string, string][] = []
+  for (const it of items) {
+    draw.push({ y: it.p[1], fn: () => { drawSprite(ctx, sprites, `${it.kind}-${it.level}`, it.p[0], it.p[1], k) } })
+    if (NAMES[it.kind]) labels.push([it.p[0], it.p[1] + 4 * k, NAMES[it.kind], it.kind === 'ticket' || it.kind === 'shop' ? '' : `Lv ${it.level}`])
+  }
+  if (sprite) {
+    const m = ctx.getTransform().inverse()
+    const a = m.transformPoint(new DOMPoint(0, 0)), b = m.transformPoint(new DOMPoint(ctx.canvas.width, ctx.canvas.height))
+    const pad = 20 * k
+    const kept = forest.kept
+    for (let i = 0; i < kept.length; i += 3) {
+      const x = (kept[i] + 0.5) * S, y = (kept[i + 1] + 0.5) * S
+      if (x < a.x - pad || x > b.x + pad || y < a.y - pad || y > b.y + pad * 3) continue
+      const v = 1 + ((i / 3) % 3)
+      const sz = kept[i + 2] / 0.55
+      draw.push({ y, fn: () => { drawSprite(ctx, sprites, `tree-${v}`, x, y, k, (TREE_SCALE / 2.4) * sz) } })
+    }
+  }
+  draw.sort((p, q) => p.y - q.y)
+  for (const d of draw) d.fn()
+  for (const l of L.lifts) drawSprite(ctx, sprites, `terminal-${TERMINAL[l.kind]}`, ...px(l.top), k, 0.7)
+  // Labels last so nothing covers them; skip any that would overlap one already placed,
+  // and hide them all when zoomed far out.
+  if (scale > 1.6) {
+    for (const l of L.lifts) { const [x, y] = px(l.bottom); labels.push([x, y + 4 * k, l.name, '']) }
+    const placed: [number, number, number, number][] = []
+    const fs = 11 / scale
+    ctx.font = `800 ${fs}px Nunito, sans-serif`
+    for (const [x, y, text, sub] of labels) {
+      const w = ctx.measureText(`${text} ${sub}`).width + fs * 1.4, h = fs * 1.8
+      let yy = y
+      // Nudge down up to twice to dodge a neighbour before giving up.
+      for (let tries = 0; tries < 3; tries++, yy += h * 1.05) {
+        const rect: [number, number, number, number] = [x - w / 2, yy, x + w / 2, yy + h]
+        if (placed.some((q) => rect[0] < q[2] && rect[2] > q[0] && rect[1] < q[3] && rect[3] > q[1])) continue
+        placed.push(rect)
+        drawLabel(ctx, x, yy, text, scale, sub || undefined)
+        break
+      }
+    }
+  }
   // Trail signs at the top of each run; sized to stay readable at any zoom.
   const sign = 7 / scale
   for (const tr of L.trails) {
@@ -198,11 +329,17 @@ function TabBar({ active = 'resort' }: { active?: string }) {
   )
 }
 
-function HomePreview({ t, stage }: { t: Terrain; stage: 1 | 2 }) {
-  const layout = useMemo(() => makeLayout(t, stage), [t, stage])
+function HomePreview({ t, stage, roads, sprites }: { t: Terrain; stage: 1 | 2; roads: Road[]; sprites: Sprites }) {
+  const layout = useMemo(() => makeLayout(t, stage, roads), [t, stage, roads])
   const levels: VillageLevels = stage === 1
     ? { lodge: 1, rentals: 0, school: 0, housing: 0, parking: 0, shop: 1 }
     : { lodge: 3, rentals: 2, school: 2, housing: 2, parking: 2, shop: 1 }
+  const forest = useMemo(() => {
+    const trees = plantTrees(t)
+    return { layer: paintTreeLayer(t, trees), kept: layout ? clearTrees(t, trees, layout, levels, roads) : trees }
+    // levels is constant per stage
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, layout, roads])
   const q = new URLSearchParams(window.location.search)
   const [showCard, setShowCard] = useState(stage === 2 && q.get('card') !== '0')
   if (!layout) return <p className="note">No base site found.</p>
@@ -210,12 +347,12 @@ function HomePreview({ t, stage }: { t: Terrain; stage: 1 | 2 }) {
     <MapView
       terrainId={TERRAIN_ID}
       bare
-      base={paintTerrain}
+      base={paintGround}
       zoomBoost={3}
-      focus={{ x: layout.base.x + layout.u[0] * 4, y: layout.base.y + layout.u[1] * 4 + 3, metresAcross: Number(q.get('across')) || (stage === 1 ? 420 : 800) }}
+      focus={{ x: layout.v[0] + layout.r[0] * 1, y: layout.v[1] + layout.r[1] * 1 + 2, metresAcross: Number(q.get('across')) || (stage === 1 ? 230 : 420) }}
       onBack={() => {}}
       onTapCell={() => setShowCard((v) => !v)}
-      overlay={(ctx, scale) => drawResort(ctx, t, layout, levels, scale)}
+      overlay={(ctx, scale) => drawResort(ctx, t, layout, levels, scale, roads, sprites, forest)}
       actions={<TabBar />}
     >
       <Hud stage={stage} />
@@ -231,10 +368,10 @@ function HomePreview({ t, stage }: { t: Terrain; stage: 1 | 2 }) {
   )
 }
 
-function SitePreview({ t }: { t: Terrain }) {
+function SitePreview({ t, roads }: { t: Terrain; roads: Road[] }) {
   const parcels = useMemo(() => computeParcels(t), [t])
   const access = parcels.find((p) => p.id === ACCESS)!
-  const sites = useMemo(() => suggestBaseSites(t, access, 3), [t, access])
+  const sites = useMemo(() => suggestBaseSites(t, access, 3, roads), [t, access, roads])
   const [pick, setPick] = useState(0)
   const flat = useMemo(() => {
     // Buildable ground: footprint-mean slope under the limit (sampled, cheap).
@@ -266,6 +403,24 @@ function SitePreview({ t }: { t: Terrain }) {
         for (const p of parcels) if (p.id !== ACCESS) ctx.fillRect(p.x0 * S, p.y0 * S, (p.x1 - p.x0) * S, (p.y1 - p.y0) * S)
         ctx.imageSmoothingEnabled = false
         ctx.drawImage(flat, 0, 0, t.width * S, t.height * S)
+        ctx.imageSmoothingEnabled = true
+        const k = S / t.cellM
+        for (const road of roads) for (const part of road.parts) drawRoad(ctx, part.map(([x, y]) => [(x + 0.5) * S, (y + 0.5) * S] as [number, number]), k, road.cls, scale)
+        const named = new Set<string>()
+        for (const road of [...roads].sort((a, b) => b.parts[0].length - a.parts[0].length)) {
+          const nm = roadLabel(road)
+          if (!nm || named.has(nm)) continue
+          named.add(nm)
+          drawRoadLabel(ctx, road.parts[0].map(([x, y]) => [(x + 0.5) * S, (y + 0.5) * S] as [number, number]), nm, scale)
+        }
+        // Planned access drive for each suggestion.
+        for (const b of sites) if (b.roadJoin) {
+          ctx.strokeStyle = '#2a5a92'
+          ctx.lineWidth = 2.5 / scale
+          ctx.setLineDash([5 / scale, 4 / scale])
+          ctx.beginPath(); ctx.moveTo((b.roadJoin[0] + 0.5) * S, (b.roadJoin[1] + 0.5) * S); ctx.lineTo((b.x + 0.5) * S, (b.y + 0.5) * S); ctx.stroke()
+          ctx.setLineDash([])
+        }
         sites.forEach((b, i) => {
           const x = (b.x + 0.5) * S, y = (b.y + 0.5) * S
           const r = (VILLAGE.footprintM / t.cellM) * S
@@ -295,7 +450,8 @@ function SitePreview({ t }: { t: Terrain }) {
               {Math.round(s.elevM * FT).toLocaleString()} ft · {s.meanSlopeDeg.toFixed(1)}° average slope ·
               {' '}{Math.round(s.nearVerticalM * FT).toLocaleString()} ft of lift vertical within {VILLAGE.nearReachM} m,
               {' '}{Math.round(s.verticalAboveM * FT).toLocaleString()} ft within {(VILLAGE.reachM / 1000).toFixed(1)} km.
-              Green = flat enough to build on.
+              {s.roadName ? ` Access: ${s.roadM} m drive from ${/hwy 40|park ave/i.test(s.roadName) ? 'US-40' : s.roadName} (${usd(accessRoadCostUsd(s))}, PLACEHOLDER rate).` : ''}
+              {' '}Green = flat enough to build on.
             </p>
           )}
         </section>
@@ -311,67 +467,26 @@ function SitePreview({ t }: { t: Terrain }) {
 }
 
 function LevelsSheet() {
-  const ref = useRef<HTMLCanvasElement>(null)
-  const rows: { kind: BuildingKind | 'parking'; name: string; from: number; to: number }[] = [
-    { kind: 'lodge', name: 'Day lodge', from: 1, to: BUILDING_LEVELS.lodge },
-    { kind: 'rentals', name: 'Rental shop', from: 1, to: BUILDING_LEVELS.rentals },
-    { kind: 'school', name: 'Ski school', from: 1, to: BUILDING_LEVELS.school },
-    { kind: 'housing', name: 'Staff housing', from: 1, to: BUILDING_LEVELS.housing },
-    { kind: 'parking', name: 'Parking', from: 0, to: 4 },
+  const rows: [string, string, number][] = [
+    ['lodge', 'Day lodge', 5], ['rentals', 'Rental shop', 3], ['school', 'Ski school', 3], ['housing', 'Staff housing', 4],
+    ['terminal', 'Lift terminal (tow, double, quad)', 3], ['ticket', 'Ticket booth', 1], ['shop', 'Maintenance garage', 1],
   ]
-  const lifts: [LiftKind, string][] = [['ropeTow', 'Rope tow'], ['fixedDouble', 'Fixed double'], ['fixedQuad', 'Fixed quad']]
-  const cellW = 170, cellH = 150, labelH = 26
-  const W = cellW * 5 + 20
-  const H = (rows.length + 1) * (cellH + labelH) + 20
-  useEffect(() => {
-    const cv = ref.current!
-    const dpr = window.devicePixelRatio || 1
-    cv.width = W * dpr
-    cv.height = H * dpr
-    const ctx = cv.getContext('2d')!
-    ctx.scale(dpr, dpr)
-    ctx.fillStyle = '#f6f1e6'
-    ctx.fillRect(0, 0, W, H)
-    const cellBg = (x: number, y: number) => {
-      ctx.fillStyle = '#eef2f7'
-      ctx.beginPath(); ctx.roundRect(x + 4, y + 4, cellW - 8, cellH - 8, 14); ctx.fill()
-      ctx.fillStyle = 'rgba(214,205,188,0.8)'
-      ctx.beginPath(); ctx.ellipse(x + cellW / 2, y + cellH * 0.6, cellW * 0.42, cellH * 0.3, 0, 0, Math.PI * 2); ctx.fill()
-    }
-    const label = (x: number, y: number, text: string, bold = false) => {
-      ctx.fillStyle = bold ? '#2b3a46' : '#6b7882'
-      ctx.font = `${bold ? 800 : 400} 13px Nunito, sans-serif`
-      ctx.textAlign = bold ? 'left' : 'center'
-      ctx.fillText(text, x, y)
-    }
-    rows.forEach((r, ri) => {
-      const y0 = 10 + ri * (cellH + labelH)
-      label(14, y0 + 16, r.name, true)
-      for (let lv = r.from; lv <= r.to; lv++) {
-        const x0 = 10 + (lv - r.from) * cellW
-        const y = y0 + labelH
-        cellBg(x0, y)
-        if (r.kind === 'parking') drawParking(ctx, lv, x0 + cellW / 2, y + cellH * 0.45, 0.55, 0.7, 0, -1)
-        else drawBuilding(ctx, r.kind, lv, x0 + cellW / 2, y + cellH * 0.62, r.kind === 'lodge' ? 0.8 : 1.4)
-        label(x0 + cellW / 2, y + cellH - 12, r.kind === 'parking' && lv === 0 ? 'Gravel lot (included)' : `Level ${lv}`)
-      }
-    })
-    const y0 = 10 + rows.length * (cellH + labelH)
-    label(14, y0 + 16, 'Lifts (bottom → top)', true)
-    lifts.forEach(([kind, name], i) => {
-      const x0 = 10 + i * cellW
-      const y = y0 + labelH
-      cellBg(x0, y)
-      drawLift(ctx, [x0 + cellW * 0.3, y + cellH * 0.78], [x0 + cellW * 0.72, y + cellH * 0.18], 1.3, kind)
-      label(x0 + cellW / 2, y + cellH - 12, name)
-    })
-  })
+  const base = `${import.meta.env.BASE_URL}sprites/`
   return (
     <main className="screen wide">
       <h2 className="screen-title">Building levels</h2>
-      <p className="note">Each upgrade changes how the building looks on the resort map. Level counts and
-        stats are proposals; all costs are PLACEHOLDER. Sizes are exaggerated ×2 on the map for readability.</p>
-      <div className="sheet-scroll"><canvas ref={ref} style={{ width: W, height: H }} /></div>
+      <p className="note">Pre-rendered 3D buildings: each upgrade changes how the building looks on the resort map.
+        Level counts are proposals; all costs are PLACEHOLDER. Drawn ×2.4 life size on the map for readability.</p>
+      {rows.map(([kind, name, n]) => (
+        <section key={kind}>
+          <h3 className="group">{name}</h3>
+          <div className="sprite-row">
+            {Array.from({ length: n }, (_, i) => (
+              <figure key={i}><img src={`${base}${kind}-${i + 1}.png`} alt={`${name} level ${i + 1}`} /><figcaption>Level {i + 1}</figcaption></figure>
+            ))}
+          </div>
+        </section>
+      ))}
     </main>
   )
 }
@@ -380,6 +495,8 @@ export function VillagePreview() {
   const params = new URLSearchParams(window.location.search)
   const [view, setView] = useState<View>((params.get('view') as View) || 'home1')
   const t = useTerrain()
+  const roads = useRoads()
+  const sprites = useSprites()
   const views: [View, string][] = [['home1', 'Home · yr 1'], ['home2', 'Home · yr 8'], ['site', 'Base site'], ['levels', 'Levels']]
   return (
     <>
@@ -388,9 +505,9 @@ export function VillagePreview() {
           {views.map(([v, l]) => <button key={v} className={v === view ? 'on' : ''} onClick={() => setView(v)}>{l}</button>)}
         </div>
       )}
-      {view === 'levels' ? <LevelsSheet /> : !t ? <p className="note">Loading terrain…</p>
-        : view === 'site' ? <SitePreview key="site" t={t} />
-        : <HomePreview key={view} t={t} stage={view === 'home1' ? 1 : 2} />}
+      {view === 'levels' ? <LevelsSheet /> : !t || !roads || !sprites ? <p className="note">Loading terrain…</p>
+        : view === 'site' ? <SitePreview key="site" t={t} roads={roads} />
+        : <HomePreview key={view} t={t} stage={view === 'home1' ? 1 : 2} roads={roads} sprites={sprites} />}
     </>
   )
 }

@@ -7,7 +7,7 @@
  * 3D engine. Building sizes are exaggerated (BUILDING_SCALE) so they stay readable on a
  * phone; this is a map convention, not real footprints.
  */
-import { hillshade, slopeDeg, elevAtCell, type Terrain } from '../../sim'
+import { contourSegments, hillshade, slopeDeg, elevAtCell, type Road, type Terrain } from '../../sim'
 
 /** Base image pixels per terrain cell for the painted terrain (higher = crisper trees). */
 export const PAINT_SCALE = 5
@@ -33,10 +33,77 @@ const fbm = (x: number, y: number) => 0.6 * smooth(x / 9, y / 9) + 0.4 * smooth(
 
 // ---------- terrain ----------
 
-/** Painted winter terrain: snowy relief, rock on cliffs, conifer forest below treeline. */
+/** Painted winter terrain with the forest baked in (zoomed-out views). */
 export function paintTerrain(t: Terrain): HTMLCanvasElement {
+  const cv = paintGround(t)
+  cv.getContext('2d')!.drawImage(paintTreeLayer(t, plantTrees(t)), 0, 0, cv.width, cv.height)
+  return cv
+}
+
+/**
+ * Tree positions: [x, y, r] triples in cells (r = crown radius in cells), on a jittered
+ * grid below the PLACEHOLDER treeline, thinning near it, absent on cliffs and in meadows.
+ */
+export function plantTrees(t: Terrain): Float32Array {
+  const out: number[] = []
+  const spacing = 0.9 // cells (~9 m)
+  for (let gy = 0; gy < t.height; gy += spacing) {
+    for (let gx = 0; gx < t.width; gx += spacing) {
+      const jx = gx + (hash(gx * 10, gy * 10) - 0.5) * spacing
+      const jy = gy + (hash(gy * 10 + 7, gx * 10) - 0.5) * spacing
+      const cx = Math.round(jx), cy = Math.round(jy)
+      if (cx < 1 || cy < 1 || cx >= t.width - 1 || cy >= t.height - 1) continue
+      const e = elevAtCell(t, cx, cy)
+      const n = fbm(jx, jy)
+      const line = TREELINE_M + (n - 0.5) * 80
+      if (e > line) continue
+      const density = Math.min(1, (line - e) / 60) * (n > 0.32 ? 1 : 0.15)
+      if (hash(gx * 13 + 1, gy * 17 + 3) > density) continue
+      if (slopeDeg(t, cx, cy) > 36) continue
+      out.push(jx, jy, (0.42 + 0.25 * hash(gx * 3, gy * 5)) * (e > line - 40 ? 0.75 : 1))
+    }
+  }
+  return new Float32Array(out)
+}
+
+/** Forest as a transparent layer at PAINT_SCALE, batched by colour so it draws quickly. */
+export function paintTreeLayer(t: Terrain, trees: Float32Array): HTMLCanvasElement {
   const S = PAINT_SCALE
-  const shade = hillshade(t, 315, 40, 1.6)
+  const cv = document.createElement('canvas')
+  cv.width = t.width * S
+  cv.height = t.height * S
+  const ctx = cv.getContext('2d')!
+  const shadows = new Path2D()
+  const crowns = [new Path2D(), new Path2D(), new Path2D()]
+  const tips = new Path2D()
+  for (let i = 0; i < trees.length; i += 3) {
+    const px = trees[i] * S, py = trees[i + 1] * S, r = trees[i + 2] * S
+    shadows.moveTo(px + r * 0.8 + r, py + r * 0.6)
+    shadows.ellipse(px + r * 0.8, py + r * 0.6, r * 1.05, r * 0.8, 0, 0, Math.PI * 2)
+    const c = crowns[i % 3]
+    c.moveTo(px + r, py)
+    c.arc(px, py, r, 0, Math.PI * 2)
+    tips.moveTo(px - r * 0.25 + r * 0.35, py - r * 0.3)
+    tips.arc(px - r * 0.25, py - r * 0.3, r * 0.35, 0, Math.PI * 2)
+  }
+  ctx.fillStyle = 'rgba(40, 60, 90, 0.28)'
+  ctx.fill(shadows)
+  const greens = ['#2f5d45', '#36684b', '#2a5240']
+  crowns.forEach((p, i) => { ctx.fillStyle = greens[i]; ctx.fill(p) })
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.fill(tips)
+  return cv
+}
+
+/** Painted winter ground: snowy relief, rock on cliffs, faint contours; no trees. */
+export function paintGround(t: Terrain): HTMLCanvasElement {
+  const S = PAINT_SCALE
+  // Two lights (strong north-west, soft south-west) and a contrast curve give the
+  // slopes more definition than a single hillshade.
+  const hsA = hillshade(t, 315, 35, 2.4)
+  const hsB = hillshade(t, 225, 50, 1.5)
+  const shade = new Float32Array(hsA.length)
+  for (let i = 0; i < shade.length; i++) shade[i] = Math.max(0, Math.min(1, (0.72 * hsA[i] + 0.28 * hsB[i] - 0.5) * 1.35 + 0.56))
   const img = new ImageData(t.width, t.height)
   for (let y = 0; y < t.height; y++) {
     for (let x = 0; x < t.width; x++) {
@@ -63,42 +130,20 @@ export function paintTerrain(t: Terrain): HTMLCanvasElement {
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(tmp, 0, 0, cv.width, cv.height)
 
-  // Trees on a jittered grid. Batched by colour so tens of thousands draw quickly.
-  const spacing = 0.9 // cells (~9 m)
-  const shadows = new Path2D()
-  const crowns = [new Path2D(), new Path2D(), new Path2D()]
-  const tips = new Path2D()
-  for (let gy = 0; gy < t.height; gy += spacing) {
-    for (let gx = 0; gx < t.width; gx += spacing) {
-      const jx = gx + (hash(gx * 10, gy * 10) - 0.5) * spacing
-      const jy = gy + (hash(gy * 10 + 7, gx * 10) - 0.5) * spacing
-      const cx = Math.round(jx), cy = Math.round(jy)
-      if (cx < 1 || cy < 1 || cx >= t.width - 1 || cy >= t.height - 1) continue
-      const e = elevAtCell(t, cx, cy)
-      const n = fbm(jx, jy)
-      // Density falls off toward the treeline, with ragged noise; meadows where noise is low.
-      const line = TREELINE_M + (n - 0.5) * 80
-      if (e > line) continue
-      const density = Math.min(1, (line - e) / 60) * (n > 0.32 ? 1 : 0.15)
-      if (hash(gx * 13 + 1, gy * 17 + 3) > density) continue
-      if (slopeDeg(t, cx, cy) > 36) continue
-      const px = jx * S, py = jy * S
-      const r = S * (0.42 + 0.25 * hash(gx * 3, gy * 5)) * (e > line - 40 ? 0.75 : 1)
-      shadows.moveTo(px + r * 0.8 + r, py + r * 0.6)
-      shadows.ellipse(px + r * 0.8, py + r * 0.6, r * 1.05, r * 0.8, 0, 0, Math.PI * 2)
-      const c = crowns[Math.floor(hash(gx * 7, gy * 11) * 3)]
-      c.moveTo(px + r, py)
-      c.arc(px, py, r, 0, Math.PI * 2)
-      tips.moveTo(px - r * 0.25 + r * 0.35, py - r * 0.3)
-      tips.arc(px - r * 0.25, py - r * 0.3, r * 0.35, 0, Math.PI * 2)
+  // Faint contours: a hint of the landform under the snow.
+  let lo = Infinity, hi = -Infinity
+  for (const e of t.elev) { lo = Math.min(lo, e); hi = Math.max(hi, e) }
+  for (let lvl = Math.ceil(lo / 20) * 20; lvl <= hi; lvl += 20) {
+    ctx.strokeStyle = lvl % 100 === 0 ? 'rgba(90,110,140,0.22)' : 'rgba(90,110,140,0.1)'
+    ctx.lineWidth = lvl % 100 === 0 ? 1.6 : 1
+    ctx.beginPath()
+    for (const [x1, y1, x2, y2] of contourSegments(t, lvl)) {
+      ctx.moveTo((x1 + 0.5) * S, (y1 + 0.5) * S)
+      ctx.lineTo((x2 + 0.5) * S, (y2 + 0.5) * S)
     }
+    ctx.stroke()
   }
-  ctx.fillStyle = 'rgba(40, 60, 90, 0.28)'
-  ctx.fill(shadows)
-  const greens = ['#2f5d45', '#36684b', '#2a5240']
-  crowns.forEach((p, i) => { ctx.fillStyle = greens[i]; ctx.fill(p) })
-  ctx.fillStyle = 'rgba(255,255,255,0.55)' // snow on the sunny side of crowns
-  ctx.fill(tips)
+
   return cv
 }
 
@@ -162,7 +207,7 @@ export function drawDiffSign(ctx: CanvasRenderingContext2D, x: number, y: number
 export type LiftKind = 'ropeTow' | 'fixedDouble' | 'fixedQuad'
 
 /** A lift line from bottom to top (overlay px) with towers, cable and chairs. */
-export function drawLift(ctx: CanvasRenderingContext2D, a: [number, number], b: [number, number], k: number, kind: LiftKind, phase = 0) {
+export function drawLift(ctx: CanvasRenderingContext2D, a: [number, number], b: [number, number], k: number, kind: LiftKind, phase = 0, terminals = true) {
   const dx = b[0] - a[0], dy = b[1] - a[1]
   const len = Math.hypot(dx, dy)
   const ux = dx / len, uy = dy / len, nx = -uy, ny = ux
@@ -212,6 +257,7 @@ export function drawLift(ctx: CanvasRenderingContext2D, a: [number, number], b: 
     }
   }
   ctx.restore()
+  if (!terminals) return
   // Terminals.
   const big = kind === 'ropeTow' ? 0.5 : kind === 'fixedDouble' ? 1 : 1.3
   box(ctx, a[0], a[1], 12 * big, 8 * big, 4 * big, k, { wall: '#6d7884', roof: 'flat', trim: '#3b4652' })
@@ -431,7 +477,7 @@ export function drawParking(ctx: CanvasRenderingContext2D, level: number, x: num
   const s = k // parking is drawn at true scale; it is already large
   // Lots stack downhill (away from the mountain) and to the side.
   const lots: [number, number, number, number][] = [[0, 0, 70, 40]]
-  const slots: [number, number][] = [[-75, 0], [75, 0], [0, 45], [-75, 45]]
+  const slots: [number, number][] = [[-75, 0], [75, 0], [-150, 0], [150, 0]]
   for (let i = 0; i < level; i++) lots.push([...slots[i], 70, 40])
   const nx = -uy, ny = ux
   lots.forEach(([ox, oy, w, d], i) => {
@@ -451,3 +497,121 @@ export function drawParking(ctx: CanvasRenderingContext2D, level: number, x: num
     }
   })
 }
+
+// ---------- pre-rendered building sprites (see tools/sprites/) ----------
+
+export interface SpriteMeta { w: number; h: number; ax: number; ay: number; pxPerM: number }
+export type Sprites = Map<string, { img: HTMLImageElement; meta: SpriteMeta }>
+/** Sprites are drawn this many times larger than life on the map (legibility). */
+export const SPRITE_SCALE = 2.4
+/** Trees are drawn a little larger than life too, so they sit with the buildings. */
+export const TREE_SCALE = 1.3
+
+/** Load all building sprites listed in public/sprites/sprites.json. */
+export async function loadSprites(): Promise<Sprites> {
+  const base = `${import.meta.env.BASE_URL}sprites/`
+  const manifest: Record<string, SpriteMeta> = await (await fetch(`${base}sprites.json`)).json()
+  const out: Sprites = new Map()
+  await Promise.all(Object.entries(manifest).map(([name, meta]) => new Promise<void>((resolve) => {
+    const img = new Image()
+    img.onload = () => { out.set(name, { img, meta }); resolve() }
+    img.onerror = () => resolve()
+    img.src = `${base}${name}.png`
+  })))
+  return out
+}
+
+/** Draw a sprite with its ground anchor at (x, y); k = overlay px per metre. Returns its top y. */
+export function drawSprite(ctx: CanvasRenderingContext2D, sprites: Sprites, name: string, x: number, y: number, k: number, extra = 1): number | null {
+  const s = sprites.get(name)
+  if (!s) return null
+  const f = (k * SPRITE_SCALE * extra) / s.meta.pxPerM
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(s.img, x - s.meta.ax * f, y - s.meta.ay * f, s.meta.w * f, s.meta.h * f)
+  return y - s.meta.ay * f
+}
+
+/** A name label pill, drawn at constant screen size (fontPx / view scale). */
+export function drawLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, scale: number, sub?: string) {
+  const fs = 11 / scale
+  ctx.save()
+  ctx.font = `800 ${fs}px Nunito, sans-serif`
+  const w = ctx.measureText(text).width + (sub ? ctx.measureText(` ${sub}`).width : 0) + fs * 1.2
+  const h = fs * 1.7
+  ctx.fillStyle = 'rgba(255,253,248,0.94)'
+  ctx.strokeStyle = 'rgba(43,58,70,0.25)'
+  ctx.lineWidth = 1 / scale
+  ctx.beginPath(); ctx.roundRect(x - w / 2, y, w, h, h / 2); ctx.fill(); ctx.stroke()
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#2b3a46'
+  const tx = x - w / 2 + fs * 0.6
+  ctx.fillText(text, tx, y + h / 2 + fs * 0.05)
+  if (sub) {
+    ctx.fillStyle = '#2a5a92'
+    ctx.fillText(` ${sub}`, tx + ctx.measureText(text).width, y + h / 2 + fs * 0.05)
+  }
+  ctx.restore()
+}
+
+// ---------- roads ----------
+
+function roadPath(pts: [number, number][]): Path2D {
+  const p = new Path2D()
+  p.moveTo(...pts[0])
+  for (let i = 1; i < pts.length; i++) p.lineTo(...pts[i])
+  return p
+}
+
+/**
+ * A plowed winter road: snowbanks, asphalt, and a centre line on big roads.
+ * pts in overlay px; k = px per metre. cls = NTD class (lower = bigger road).
+ */
+export function drawRoad(ctx: CanvasRenderingContext2D, pts: [number, number][], k: number, cls: number, scale: number) {
+  if (pts.length < 2) return
+  const major = cls <= 3
+  const wM = major ? 9 : 6
+  const path = roadPath(pts)
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = 'rgba(214, 222, 232, 0.95)' // plowed banks
+  ctx.lineWidth = Math.max(wM * k + 8 * k, 3 / scale)
+  ctx.stroke(path)
+  ctx.strokeStyle = major ? '#6f747a' : '#8a8e93'
+  ctx.lineWidth = Math.max(wM * k, 2 / scale)
+  ctx.stroke(path)
+  if (major && scale * k > 0.4) {
+    ctx.strokeStyle = '#e4b33a'
+    ctx.lineWidth = Math.max(0.35 * k, 0.6 / scale)
+    ctx.setLineDash([3 * k, 3 * k])
+    ctx.stroke(path)
+    ctx.setLineDash([])
+  }
+  ctx.restore()
+}
+
+/** Road name at the middle of its longest part, along the road. */
+export function drawRoadLabel(ctx: CanvasRenderingContext2D, pts: [number, number][], text: string, scale: number) {
+  if (pts.length < 2 || !text) return
+  const i = Math.floor(pts.length / 2)
+  const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)]
+  let ang = Math.atan2(b[1] - a[1], b[0] - a[0])
+  if (ang > Math.PI / 2) ang -= Math.PI
+  if (ang < -Math.PI / 2) ang += Math.PI
+  const fs = 10 / scale
+  ctx.save()
+  ctx.translate(...pts[i])
+  ctx.rotate(ang)
+  ctx.font = `800 ${fs}px Nunito, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineWidth = fs * 0.35
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+  ctx.strokeText(text, 0, -fs * 1.1)
+  ctx.fillStyle = '#4a5866'
+  ctx.fillText(text, 0, -fs * 1.1)
+  ctx.restore()
+}
+
+export type { Road }
