@@ -7,7 +7,7 @@ const inp: SeasonInputs = {
   lifts: [{ type: 'fixedQuad', capacityPph: 20000 }],
 }
 const season = (snow: number, finance: number, seed: number) => {
-  let s = startSeason(1, seed, inp.avgSnowfallIn, 79, snow)
+  let s = startSeason(1, seed, { ...inp, snowDifficulty: snow, financeDifficulty: finance }, 79)
   while (s.day < SEASON.lengthDays) s = simulateDay(s, { ...inp, snowDifficulty: snow, financeDifficulty: finance }).season
   return s
 }
@@ -16,7 +16,7 @@ const avg = (f: (seed: number) => number) => seeds.reduce((t, s) => t + f(s), 0)
 
 describe('difficulty modifiers', () => {
   it('normal reproduces the base tuning', () => {
-    expect(snowModifiers(0.5)).toEqual({ yearFactor: [0.55, 1.45], warmChance: 1 })
+    expect(snowModifiers(0.5)).toEqual({ yearFactor: [0.55, 1.45], warmChance: 1, maxOpeningDelayDays: 24 })
     expect(financeModifiers(0.5)).toEqual({ costs: 1, demand: 1 })
   })
   it('gets monotonically harder', () => {

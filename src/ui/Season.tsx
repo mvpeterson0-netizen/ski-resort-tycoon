@@ -1,5 +1,5 @@
 import {
-  SEASON, advanceDay, liftComfortGuests, seasonInputs, seasonTotals, setTicketPrice, siteById,
+  SEASON, advanceDay, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, setTicketPrice, siteById,
   type DayResult, type GameState,
 } from '../sim'
 import { usd } from './format'
@@ -9,6 +9,11 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const dayLabel = (d: DayResult) => {
   const [, m, day] = d.date.split('-').map(Number)
   return `${WEEKDAYS[d.weekday]}, ${MONTHS[m - 1]} ${day}`
+}
+/** Calendar label for a season day, e.g. "Dec 22". */
+const openingLabel = (year: number, day: number) => {
+  const d = seasonDate(year, day)
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`
 }
 const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
 
@@ -36,7 +41,7 @@ export function SeasonScreen({ game, onChange, onExit }: {
   const site = siteById(game.siteId)!
   const season = game.season
   const today = season?.days.at(-1) ?? null
-  const totals = season ? seasonTotals(season.days) : null
+  const totals = season ? seasonTotals(season.days, season) : null
   const cap = liftComfortGuests(seasonInputs(game, site).lifts)
 
   const step = (n: number) => {
@@ -57,12 +62,21 @@ export function SeasonScreen({ game, onChange, onExit }: {
         <section className="panel snow">
           <div><span>Base</span><b>{season.baseIn.toFixed(0)}"</b></div>
           <div><span>New snow</span><b>{today ? `${today.newSnowIn}"` : '—'}</b></div>
-          <div><span>Status</span><b className={today?.open ? 'up' : 'down'}>{today ? (today.open ? 'Open' : 'Closed') : '—'}</b></div>
+          <div>
+            <span>Conditions</span>
+            {today?.open ? (
+              <b className={today.conditions >= 1.15 ? 'up' : today.conditions <= 0.8 ? 'down' : ''}>{Math.round(today.conditions * 100)}%</b>
+            ) : (
+              <b className="down">Closed</b>
+            )}
+          </div>
         </section>
-        {today && !today.open && (
-          <p className="hint">Need {SEASON.weather.openBaseIn}" of base to open. Snowmaking comes later.</p>
+        {today && !today.open && !today.stormClosed && (
+          <p className="hint">Not enough snow yet. Opening day: {openingLabel(game.year, season.openingDay)}.</p>
         )}
-        {today?.warm && <p className="hint">Warm day: the base melted.</p>}
+        {today?.stormClosed && <p className="hint">Closed today: storm and wind hold.</p>}
+        {today?.open && today.conditions >= 1.4 && <p className="hint">Powder day: demand is way up.</p>}
+        {today?.open && today.warm && <p className="hint">Warm day: slushy snow is keeping some skiers away.</p>}
 
         {today && (
           <>
@@ -76,7 +90,10 @@ export function SeasonScreen({ game, onChange, onExit }: {
                   {today.open && today.turnedAway === 0 && <small>Lift line ~{today.waitMin} min</small>}
                 </dd>
               </div>
-              <div className="trait"><dt>Tickets</dt><dd>{money(today.ticketRevenueUsd)}</dd></div>
+              <div className="trait">
+                <dt>Day tickets<small>{today.dayTicketGuests.toLocaleString()} sold · {today.passVisits.toLocaleString()} pass visits</small></dt>
+                <dd>{money(today.ticketRevenueUsd)}</dd>
+              </div>
               <div className="trait"><dt>Food & drink</dt><dd>{money(today.foodRevenueUsd)}</dd></div>
               <div className="trait"><dt>Operating costs</dt><dd>{money(-today.costUsd)}</dd></div>
               <div className="trait total"><dt>Net today</dt><dd className={today.netUsd < 0 ? 'down' : 'up'}>{money(today.netUsd)}</dd></div>
@@ -91,6 +108,8 @@ export function SeasonScreen({ game, onChange, onExit }: {
           <div><span>Net</span><b className={totals!.netUsd < 0 ? 'down' : ''}>{usd(totals!.netUsd)}</b></div>
           <div><span>Cash</span><b>{usd(game.cashUsd)}</b></div>
           <div><span>Days open</span><b>{totals!.openDays}</b></div>
+          <div><span>Passes sold</span><b>{season.passesSold.toLocaleString()}</b></div>
+          <div><span>Pass revenue</span><b>{usd(season.passRevenueUsd)}</b></div>
         </div>
 
         <div className="panel price">

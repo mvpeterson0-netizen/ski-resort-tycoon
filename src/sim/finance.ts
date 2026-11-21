@@ -13,13 +13,13 @@ export const FIN = {
     limitShareOfAssets: 0.3,
     minLimitUsd: 1_000_000,
     /** PLACEHOLDER: annual interest on the drawn balance, charged at year end. */
-    ratePct: 11,
+    ratePct: 8,
   },
   termLoan: {
     /** PLACEHOLDER: total term debt may not exceed this share of asset value. */
     maxShareOfAssets: 0.6,
-    ratePct: 8.5,
-    termYears: 10,
+    ratePct: 6.5,
+    termYears: 15,
     minUsd: 100_000,
   },
   /** PLACEHOLDER off-season fixed costs (insurance, property tax, upkeep), per year. */

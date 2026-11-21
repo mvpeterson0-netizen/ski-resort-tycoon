@@ -14,8 +14,9 @@ import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport }
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
 // v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
+// v7: season pass price.
 // Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 6
+export const GAME_STATE_VERSION = 7
 
 export interface Loan {
   id: string
@@ -72,6 +73,8 @@ export interface GameState {
   lastSeason: (SeasonTotals & { year: number }) | null
   /** Ticket price carried between seasons. */
   ticketPriceUsd: number
+  /** Season pass price, set in the off-season. */
+  passPriceUsd: number
   difficulty: DifficultySettings
   /** Drawn balance on the revolving credit line. */
   creditUsd: number
@@ -113,6 +116,7 @@ export function newGame(
     season: null,
     lastSeason: null,
     ticketPriceUsd: SEASON.defaultTicketPriceUsd,
+    passPriceUsd: SEASON.defaultPassPriceUsd,
     difficulty: { ...difficulty },
     creditUsd: 0,
     // Year 1 opens with the starting cash, then the land purchase and its mortgage.
@@ -150,6 +154,12 @@ export function parseSave(raw: unknown): GameState | null {
     g.book = emptyBook(typeof g.cashUsd === 'number' ? g.cashUsd : 0)
     g.reports = []
     g.bankrupt = false
+    g.version = 6
+  }
+  if (g.version === 6) {
+    g.passPriceUsd = SEASON.defaultPassPriceUsd
+    const pre = { passesSold: 0, passVisits: 0, passRevenueUsd: 0, ticketRevenueUsd: 0, foodRevenueUsd: 0, avgConditions: 0 }
+    if (g.lastSeason) g.lastSeason = { ...pre, ...(g.lastSeason as object) } as GameState['lastSeason']
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -209,10 +219,18 @@ export function seasonBlocker(g: GameState): string | null {
   return null
 }
 
+/** Start the season: pass sales are settled now and their cash arrives up front. */
 export function beginSeason(g: GameState, site: Site): GameState {
   const why = seasonBlocker(g)
   if (why) throw new Error(why)
-  return { ...g, phase: 'season', season: startSeason(g.year, g.seed, site.traits.avgSnowfallIn, g.ticketPriceUsd, g.difficulty.snow) }
+  const season = startSeason(g.year, g.seed, seasonInputs(g, site), g.ticketPriceUsd, g.passPriceUsd)
+  return { ...g, phase: 'season', season, cashUsd: g.cashUsd + season.passRevenueUsd }
+}
+
+/** Pass prices are fixed once the season starts. */
+export function setPassPrice(g: GameState, priceUsd: number): GameState {
+  if (g.phase === 'season') return g
+  return { ...g, passPriceUsd: Math.max(50, Math.min(3000, Math.round(priceUsd))) }
 }
 
 export function setTicketPrice(g: GameState, priceUsd: number): GameState {
@@ -233,7 +251,7 @@ export function advanceDay(g: GameState, site: Site): { game: GameState; result:
 /** Close the season, then close the year (fixed costs, loan payments, report). */
 export function finishSeason(g: GameState): GameState {
   if (!g.season) return g
-  const totals = { ...seasonTotals(g.season.days), year: g.season.year }
+  const totals = { ...seasonTotals(g.season.days, g.season), year: g.season.year }
   const closed = closeYear({ ...g, phase: 'offseason', lastSeason: totals, season: null }, totals).game
   return { ...closed, year: g.year + 1 }
 }

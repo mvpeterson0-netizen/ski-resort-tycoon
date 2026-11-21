@@ -31,10 +31,10 @@ const { years } = balanceReport(
 if (process.env.BALANCE_OUT) writeFileSync(process.env.BALANCE_OUT, JSON.stringify(years, null, 2))
 
 describe('pacing on Normal difficulty (reinvesting player)', () => {
-  it('keeps median cash between $0 and $3M through the first decade', () => {
+  it('keeps median cash between $0 and ~$4M (about one big lift) through the first decade', () => {
     for (const y of years.slice(0, 10)) {
       expect(y.medianCash).toBeGreaterThanOrEqual(0)
-      expect(y.medianCash).toBeLessThanOrEqual(3_000_000)
+      expect(y.medianCash).toBeLessThanOrEqual(4_000_000)
     }
   })
 
@@ -43,9 +43,11 @@ describe('pacing on Normal difficulty (reinvesting player)', () => {
     expect(years[4].medianNetWorth).toBeLessThan(years[0].medianNetWorth * 2.5)
   })
 
-  it('makes bad snow years hurt', () => {
-    // In the worst tenth of years the resort loses money (after fixed costs and interest).
-    expect(years.slice(0, 10).filter((y) => y.p10NetIncome < 0).length).toBeGreaterThanOrEqual(5)
+  it('makes bad snow years noticeably worse, without deciding the outcome', () => {
+    // Owner direction: weather sways results, decisions decide survival. Worst-decile
+    // operating profit is clearly below the median, but careful players stay afloat.
+    const ys = years.slice(2, 12)
+    expect(ys.filter((y) => y.p10OpProfit < y.medianOpProfit * 0.75).length).toBeGreaterThanOrEqual(5)
   })
 
   it('takes more than a decade to build out the mountain', () => {
@@ -53,6 +55,6 @@ describe('pacing on Normal difficulty (reinvesting player)', () => {
   })
 
   it('rarely bankrupts a careful reinvesting player', () => {
-    expect(years[14].bankruptShare).toBeLessThanOrEqual(0.25)
+    expect(years[14].bankruptShare).toBeLessThanOrEqual(0.1)
   })
 })

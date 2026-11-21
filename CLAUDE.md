@@ -49,14 +49,22 @@ with a reduced off-season (building, hiring, financing, summer activities).
   gentle end of class, deep = steep end) on the selected parcel, plus a per-parcel mix
   bar. Same thresholds as trail grading (`src/sim/difficulty.ts`). Also a "Runs" toggle
   in build mode, on owned land.
-- **Winter season (step 6, `src/sim/season.ts`):** Dec 1 + 126 days, game year 1 =
-  2026-27. Daily weather from a seeded RNG (season snowfall = site average × a 0.55–1.45
-  year factor; storms; warm melt days more likely late season); opens at 18" base (no
-  snowmaking yet). Guests = market × day type (weekday/Sat/Sun; holidays = Dec 24–Jan 1,
-  MLK and Presidents' Day Sat–Mon) × snow × metro access × terrain size/variety × price
-  elasticity, capped by lift capacity. Revenue = tickets + food; costs = per-lift, per-
-  trail grooming, daily overhead (stand-in for staff until step 8). All PLACEHOLDER in
-  `SEASON`. GameState v4 adds `season`, `lastSeason`, `ticketPriceUsd`.
+- **Winter season (`src/sim/season.ts`, redesigned per owner):** Dec 1 + 126 days, game
+  year 1 = 2026-27. Snow drives *demand*, not open/closed: each day has a conditions score
+  0.5–1.5 (base depth, fresh snow, warm penalty) that multiplies demand. A poor snow
+  year only delays opening day (Normal worst ≈ 24 days late ≈ 80% open; tested ≥ 76%
+  over 200 seeds incl. a 140" site); once open, grooming keeps an 18" base and only rare
+  storm days close. Market = locals (60%) + visitors; demand × day type (weekday/Sat/Sun;
+  holidays Dec 24–Jan 1, MLK and Presidents' Day Sat–Mon) × conditions × access ×
+  terrain (diminishing returns) × day-price elasticity, capped by lift capacity.
+- **Season passes (owner request):** pass price set in the off-season (locked at season
+  start, previewed with `estimatePassSales`). Adoption among locals falls with pass price
+  and rises with day-ticket price; pass cash arrives in one lump at season start; pass
+  holders stop buying day tickets and ski 1.6× as often (lift capacity + food, no gate
+  revenue). Costs: per-lift daily, per-trail grooming, per-guest variable, daily
+  overhead (stand-in for staff until step 8). All PLACEHOLDER in `SEASON`.
+- **Financing kept minor (owner request):** land mortgage 6%/25 yr, term loans 6.5%/15 yr,
+  credit line 8%, so pricing, lifts and amenities decide outcomes, not interest.
 - **Difficulty sliders (owner request):** Settings screen (title + resort home) with
   Snowfall and Finances sliders, 0 easy → 0.5 normal → 1 hard (`difficultySettings.ts`).
   Snow scales the season snowfall factor range and warm-day chance; Finances scales
@@ -76,14 +84,15 @@ with a reduced off-season (building, hiring, financing, summer activities).
   years should lose money. Enforced by `src/sim/balance.test.ts`, which runs the
   auto-player (`autoplayer.ts`: reinvests into trails/lifts/land, borrows when affordable,
   clears credit before expanding) over 20 seeds × 15 years on Berthoud Pass. Current
-  Normal result: median cash $1.3–3.3M, net worth ~$5.5M → ~$32M by year 15, ~4 of 9
-  parcels owned by year 15, ~15% of aggressive borrowers go bankrupt. Any economy
+  Normal result: median cash ~$0.8–3.5M (ceiling checked at ~$4M, about one big lift),
+  net worth ~$5M → ~$33M by year 15, ~4 of 9 parcels by year 15, no bankruptcies for
+  the careful auto-player; worst-decile years earn well below the median. Any economy
   change must keep these tests green. Expansion parcels carry a holdout premium
   (`expansionPremium`: +15% per parcel owned, PLACEHOLDER).
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v6; v2–v5 upgrade automatically, older versions are discarded).
+  (v7; v2–v6 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 

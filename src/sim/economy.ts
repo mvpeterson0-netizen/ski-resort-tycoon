@@ -11,9 +11,9 @@ export const ECON = {
   /** PLACEHOLDER, balance-tuned: covers land plus a starter build with little to spare. */
   startingCashUsd: 5_000_000,
   landLoan: {
-    /** PLACEHOLDER: annual interest rate. */
-    ratePct: 7.5,
-    termYears: 20,
+    /** PLACEHOLDER: annual interest rate (kept modest so financing doesn't dominate play). */
+    ratePct: 6,
+    termYears: 25,
     /** PLACEHOLDER: lenders require at least this share as down payment. */
     minDownPct: 25,
   },

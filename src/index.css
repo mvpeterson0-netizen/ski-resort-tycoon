@@ -189,3 +189,8 @@ h1, .screen-title { font-weight: 800; letter-spacing: -0.01em; }
 .credit-bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
 .credit-bar i { display: block; height: 100%; background: var(--accent); }
 .btn.wide { width: 100%; margin-top: 10px; }
+small.block { display: block; font-size: 0.75rem; color: var(--muted); }
+/* Amounts never wrap; compact secondary navigation row */
+.trait dd { white-space: nowrap; }
+.actions .row.small .btn { min-height: 40px; font-size: 0.92rem; }
+.trait dd small { white-space: normal; }

@@ -113,6 +113,7 @@ export default function App() {
       return (
         <ResortHome
           game={game}
+          onChange={persist}
           onMap={() => setNav({ screen: 'resortMap' })}
           onBuild={() => setNav({ screen: 'build' })}
           onSettings={() => setNav({ screen: 'settings', back: 'home' })}

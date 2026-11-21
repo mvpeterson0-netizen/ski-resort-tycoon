@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   FIN, assetValue, creditAvailable, creditLimit, drawCredit, fixedCosts, repayCredit, takeTermLoan, termLoanLimit,
-  type FinResult, type GameState, type YearReport,
+  type FinResult, type GameState, type SeasonTotals, type YearReport,
 } from '../sim'
 import { usd } from './format'
 
@@ -19,12 +19,20 @@ function Row({ label, value, total, hint }: { label: string; value: string; tota
 }
 
 /** Year-end report: P&L, cash flow (start + lines = end) and position. */
-export function YearReportView({ r }: { r: YearReport }) {
+export function YearReportView({ r, season }: { r: YearReport; season?: SeasonTotals | null }) {
   return (
     <>
       <h3 className="group">Profit & loss</h3>
       <dl className="traits">
-        <Row label="Season revenue" value={money(r.seasonRevenueUsd)} />
+        {season && season.passRevenueUsd + season.ticketRevenueUsd + season.foodRevenueUsd > 0 ? (
+          <>
+            <Row label="Season passes" value={money(season.passRevenueUsd)} hint={`${season.passesSold.toLocaleString()} sold, cash at season start`} />
+            <Row label="Day tickets" value={money(season.ticketRevenueUsd)} />
+            <Row label="Food & drink" value={money(season.foodRevenueUsd)} />
+          </>
+        ) : (
+          <Row label="Season revenue" value={money(r.seasonRevenueUsd)} />
+        )}
         <Row label="Season operating costs" value={money(-r.seasonCostUsd)} />
         <Row label="Off-season fixed costs" value={money(-r.fixedCostsUsd)} hint="Insurance, property tax, upkeep" />
         <Row label="Interest" value={money(-r.interestUsd)} hint="Loans and credit line" />
@@ -69,7 +77,7 @@ export function YearEndScreen({ game, onContinue }: { game: GameState; onContinu
         {r.creditDrawnUsd > 0 && !r.bankrupt && (
           <p className="note">You drew {usd(r.creditDrawnUsd)} on the credit line this year to cover shortfalls.</p>
         )}
-        <YearReportView r={r} />
+        <YearReportView r={r} season={game.lastSeason?.year === r.year ? game.lastSeason : null} />
         <p className="foot">All costs, rates and limits are placeholders.</p>
       </div>
       <nav className="actions">

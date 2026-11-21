@@ -20,12 +20,15 @@ export interface SnowModifiers {
   yearFactor: [number, number]
   /** Multiplier on the chance of a warm melt day. */
   warmChance: number
+  /** Opening delay (days) in the worst year in range; Normal ≈ 20% of the season. */
+  maxOpeningDelayDays: number
 }
 
 export function snowModifiers(t: number): SnowModifiers {
   return {
     yearFactor: [scale(t, 0.85, 0.55, 0.35), scale(t, 1.6, 1.45, 1.15)],
     warmChance: scale(t, 0.5, 1, 1.7),
+    maxOpeningDelayDays: Math.round(scale(t, 12, 24, 32)),
   }
 }
 

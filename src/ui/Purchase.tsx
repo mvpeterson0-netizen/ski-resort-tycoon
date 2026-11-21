@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
-  ECON, annualDebtService, landPrice, seasonBlocker, parcelLabel, planPurchase, siteById, siteForParcel, totalDebt,
+  ECON, annualDebtService, estimatePassSales, landPrice, seasonBlocker, seasonInputs, parcelLabel, planPurchase, setPassPrice,
+  setTicketPrice, siteById, siteForParcel, totalDebt,
   type GameState, type Parcel, type Region, type Site,
 } from '../sim'
 import { usd } from './format'
@@ -77,9 +78,9 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
 }
 
 /** Resort home: the hub screen once the player owns land. Grows in later steps. */
-export function ResortHome({ game, onMap, onBuild, onSeason, onSettings, onFinance, onQuit }: {
-  game: GameState; onMap: () => void; onBuild: () => void; onSeason: () => void; onSettings: () => void
-  onFinance: () => void; onQuit: () => void
+export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSettings, onFinance, onQuit }: {
+  game: GameState; onChange: (g: GameState) => void; onMap: () => void; onBuild: () => void; onSeason: () => void
+  onSettings: () => void; onFinance: () => void; onQuit: () => void
 }) {
   const inSeason = game.phase === 'season'
   const blocker = seasonBlocker(game)
@@ -115,6 +116,9 @@ export function ResortHome({ game, onMap, onBuild, onSeason, onSettings, onFinan
         {game.trails.length === 0 && game.lifts.length === 0 && (
           <p className="note">Start by drawing a trail and placing a lift on your land.</p>
         )}
+        {!inSeason && site && !blocker && (
+          <PricingPanel game={game} onChange={onChange} estimate={estimatePassSales(game.year, seasonInputs(game, site), game.passPriceUsd, game.ticketPriceUsd)} />
+        )}
         {game.lastSeason && !inSeason && (
           <>
             <h3 className="group">Last season (year {game.lastSeason.year})</h3>
@@ -144,12 +148,37 @@ export function ResortHome({ game, onMap, onBuild, onSeason, onSettings, onFinan
             {blocker && <p className="hint center">To open for winter: {blocker.toLowerCase()}.</p>}
           </>
         )}
-        <div className="row">
+        <div className="row small">
           {site?.terrainId && <button className="btn" onClick={onMap}>Land</button>}
           <button className="btn" onClick={onSettings}>Settings</button>
           <button className="btn" onClick={onQuit}>Menu</button>
         </div>
       </nav>
     </main>
+  )
+}
+
+/** Off-season pricing: day ticket and season pass, with a live pass-sales estimate. */
+function PricingPanel({ game, onChange, estimate }: {
+  game: GameState; onChange: (g: GameState) => void; estimate: { passesSold: number; revenueUsd: number }
+}) {
+  const stepper = (label: string, value: number, step: number, set: (v: number) => void, hint: string) => (
+    <div className="panel price">
+      <span>{label}<small className="block">{hint}</small></span>
+      <button className="btn" aria-label={`Lower ${label}`} onClick={() => set(value - step)}>−</button>
+      <b>${value}</b>
+      <button className="btn" aria-label={`Raise ${label}`} onClick={() => set(value + step)}>+</button>
+    </div>
+  )
+  return (
+    <>
+      <h3 className="group">Prices for next season</h3>
+      {stepper('Day ticket', game.ticketPriceUsd, 5, (v) => onChange(setTicketPrice(game, v)), 'Can change any day')}
+      {stepper('Season pass', game.passPriceUsd, 25, (v) => onChange(setPassPrice(game, v)), 'Locked when the season starts')}
+      <p className="hint small center">
+        Estimated <b>{estimate.passesSold.toLocaleString()}</b> passes · <b>{usd(estimate.revenueUsd)}</b> cash when the season starts.
+        Pass holders stop buying day tickets and ski more often.
+      </p>
+    </>
   )
 }

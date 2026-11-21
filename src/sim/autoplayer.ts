@@ -118,13 +118,13 @@ function reinvest(g: GameState, o: Opts, landQueue: number[]): GameState {
     if (!next) return g
     const spare = g.cashUsd - reserve(g, o)
     if (spare < next.cost) {
-      // Borrow the shortfall if the bank allows it and the payment fits within a third
-      // of last season's operating profit.
+      // Borrow the shortfall if the bank allows it and total loan payments stay under
+      // a fifth of last season's operating profit (financing stays a minor factor).
       const need = Math.ceil((next.cost - spare) / 10_000) * 10_000
       const pay = need * (FIN.termLoan.ratePct / 100) / (1 - Math.pow(1 + FIN.termLoan.ratePct / 100, -FIN.termLoan.termYears))
       const opProfit = g.lastSeason?.netUsd ?? 0
       const currentPay = g.loans.reduce((s, l) => s + l.annualPaymentUsd, 0)
-      if (need > termLoanLimit(g) || need < FIN.termLoan.minUsd || currentPay + pay > opProfit / 3) return g
+      if (need > termLoanLimit(g) || need < FIN.termLoan.minUsd || currentPay + pay > opProfit / 5) return g
       const r = takeTermLoan(g, need)
       if (!r.ok) return g
       g = r.game
