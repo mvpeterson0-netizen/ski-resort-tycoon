@@ -1,0 +1,101 @@
+/*
+ * STYLE OPTIONS (preview only): pick with ?theme=<name>. The default (no attribute)
+ * is the current "Trail Map" style in index.css. Unchosen themes get deleted once the
+ * owner picks one.
+ */
+
+/* 2. Alpine Night: dark, amber, clean sans */
+[data-theme='night'] {
+  --bg: #0e1622; --surface: #172231; --ink: #e9eef5; --muted: #8ea0b4; --line: #26354a;
+  --accent: #ffb547; --accent-ink: #1b1204;
+  --green: #4cc46a; --blue: #5b9bff; --black: #e9eef5;
+  --snow: #dfe8f2; --rock: #3a4a5e; --sky: #132034;
+  --font: 'Inter', system-ui, sans-serif; --head-font: 'Inter', system-ui, sans-serif; --radius: 14px;
+  --note-bg: #2a2412; --note-line: #5a4a1c; --danger: #ff7a6b;
+  --map-light: 205 218 235; --map-shadow: 22 32 52; --contour: 255 181 71; --map-bg: #0b111a;
+}
+[data-theme='night'] h1, [data-theme='night'] .screen-title { font-weight: 800; letter-spacing: -0.02em; }
+
+/* 3. Retro Poster: mid-century ski poster, condensed caps, orange + teal */
+[data-theme='poster'] {
+  --bg: #f3e6cf; --surface: #fbf3e3; --ink: #1f3a3d; --muted: #6b6a5d; --line: #1f3a3d;
+  --accent: #e2572b; --accent-ink: #fff8ec;
+  --green: #2f8a5b; --blue: #1f6e8c; --black: #1f3a3d;
+  --snow: #fff8ec; --rock: #e2a14a; --sky: #8fc7c4;
+  --font: 'Nunito', system-ui, sans-serif; --head-font: 'Bebas Neue', Impact, sans-serif; --radius: 0px;
+  --note-bg: #fbe3b4; --note-line: #1f3a3d; --danger: #c2361b;
+  --map-light: 255 246 228; --map-shadow: 143 199 196; --contour: 226 87 43; --map-bg: #e9d6b4;
+}
+[data-theme='poster'] h1, [data-theme='poster'] h2, [data-theme='poster'] .screen-title {
+  font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; font-size: 2.1rem; line-height: 1;
+}
+[data-theme='poster'] h1 { font-size: 3.2rem; }
+[data-theme='poster'] .btn, [data-theme='poster'] .card, [data-theme='poster'] .panel, [data-theme='poster'] .traits,
+[data-theme='poster'] .kpis div { border-width: 2px; box-shadow: 4px 4px 0 var(--ink); }
+[data-theme='poster'] .btn { font-family: var(--head-font); font-weight: 400; font-size: 1.4rem; letter-spacing: 0.06em; }
+
+/* 4. Swiss Minimal: white, black, single red, square, ruled */
+[data-theme='swiss'] {
+  --bg: #ffffff; --surface: #ffffff; --ink: #111111; --muted: #6b6b6b; --line: #111111;
+  --accent: #e3000f; --accent-ink: #ffffff;
+  --green: #009a44; --blue: #0057b8; --black: #111111;
+  --snow: #ffffff; --rock: #d9d9d9; --sky: #f2f2f2;
+  --font: 'Inter', 'Helvetica Neue', Arial, sans-serif; --head-font: 'Inter', 'Helvetica Neue', Arial, sans-serif; --radius: 0px;
+  --note-bg: #ffffff; --note-line: #e3000f; --danger: #e3000f;
+  --map-light: 255 255 255; --map-shadow: 150 150 150; --contour: 17 17 17; --map-bg: #ffffff;
+}
+[data-theme='swiss'] h1, [data-theme='swiss'] .screen-title { font-weight: 800; letter-spacing: -0.04em; }
+[data-theme='swiss'] h1 { font-size: 2.6rem; }
+[data-theme='swiss'] .group { color: var(--accent); border-top: 2px solid var(--ink); padding-top: 6px; }
+[data-theme='swiss'] .card, [data-theme='swiss'] .traits, [data-theme='swiss'] .panel, [data-theme='swiss'] .kpis div {
+  border-width: 0 0 1px 0; }
+[data-theme='swiss'] .note { border-width: 0 0 0 4px; }
+
+/* 5. Lodge: dark wood, cream, forest green, slab serif */
+[data-theme='lodge'] {
+  --bg: #2b1d14; --surface: #3a281c; --ink: #f3e7d3; --muted: #c4ad8f; --line: #5a4030;
+  --accent: #4f7a3a; --accent-ink: #f8f1e4;
+  --green: #79b35a; --blue: #6fa0d8; --black: #f3e7d3;
+  --snow: #f3e7d3; --rock: #6b4c36; --sky: #1f3328;
+  --font: 'Roboto Slab', Georgia, serif; --head-font: 'Roboto Slab', Georgia, serif; --radius: 6px;
+  --note-bg: #47331f; --note-line: #8a6a3e; --danger: #e8836b;
+  --map-light: 238 228 210; --map-shadow: 64 74 58; --contour: 140 92 52; --map-bg: #21160f;
+}
+[data-theme='lodge'] h1, [data-theme='lodge'] .screen-title { font-weight: 700; }
+[data-theme='lodge'] .btn, [data-theme='lodge'] .card, [data-theme='lodge'] .panel, [data-theme='lodge'] .traits {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 0 rgba(0,0,0,0.35); }
+
+/* 6. Arcade: bright, pixel headings, hard shadows */
+[data-theme='arcade'] {
+  --bg: #1a1446; --surface: #2a2170; --ink: #ffffff; --muted: #b9b2ff; --line: #ffffff;
+  --accent: #ffdd00; --accent-ink: #1a1446;
+  --green: #3ee06b; --blue: #3ab4ff; --black: #ffffff;
+  --snow: #ffffff; --rock: #7a5cff; --sky: #3a2c9c;
+  --font: 'Inter', system-ui, sans-serif; --head-font: 'Press Start 2P', monospace; --radius: 0px;
+  --note-bg: #3a2c9c; --note-line: #ffdd00; --danger: #ff5c7a;
+  --map-light: 236 240 255; --map-shadow: 70 52 170; --contour: 255 221 0; --map-bg: #120e33;
+}
+[data-theme='arcade'] h1 { font-size: 1.35rem; line-height: 1.5; }
+[data-theme='arcade'] h2, [data-theme='arcade'] .screen-title { font-size: 1rem; line-height: 1.5; }
+[data-theme='arcade'] .group { font-family: var(--head-font); font-size: 0.6rem; color: var(--accent); }
+[data-theme='arcade'] .btn, [data-theme='arcade'] .card, [data-theme='arcade'] .panel, [data-theme='arcade'] .traits,
+[data-theme='arcade'] .kpis div { border-width: 3px; box-shadow: 5px 5px 0 #000; }
+[data-theme='arcade'] .btn { font-family: var(--head-font); font-size: 0.72rem; }
+
+/* 7. Glacier: icy gradient, frosted glass, very rounded */
+[data-theme='glacier'] {
+  --bg: #e8f3fb; --surface: rgba(255,255,255,0.62); --ink: #0f2a43; --muted: #4f6b85; --line: rgba(255,255,255,0.9);
+  --accent: #1f7ae0; --accent-ink: #ffffff;
+  --green: #18a058; --blue: #1f7ae0; --black: #0f2a43;
+  --snow: #ffffff; --rock: #b9d3ea; --sky: #d6ebfb;
+  --font: 'Nunito', system-ui, sans-serif; --head-font: 'Nunito', system-ui, sans-serif; --radius: 22px;
+  --note-bg: rgba(255,255,255,0.7); --note-line: rgba(31,122,224,0.35); --danger: #d6455d;
+  --map-light: 250 253 255; --map-shadow: 120 160 205; --contour: 31 122 224; --map-bg: #dcecf8;
+}
+[data-theme='glacier'] body { background: linear-gradient(170deg, #f4fbff 0%, #dcecf8 55%, #c9e0f3 100%) fixed; }
+[data-theme='glacier'] h1, [data-theme='glacier'] .screen-title { font-weight: 800; }
+[data-theme='glacier'] .card, [data-theme='glacier'] .panel, [data-theme='glacier'] .traits, [data-theme='glacier'] .kpis div,
+[data-theme='glacier'] .btn:not(.primary) {
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 6px 20px rgba(31,90,150,0.12); }
+[data-theme='glacier'] .btn.primary { background: linear-gradient(135deg, #3a95ff, #1f6ad0); box-shadow: 0 6px 16px rgba(31,122,224,0.35); }
+[data-theme='glacier'] .actions { background: rgba(232,243,251,0.97); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }

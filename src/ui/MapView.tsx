@@ -17,8 +17,21 @@ async function loadTerrain(id: string): Promise<{ meta: TerrainMeta; terrain: Te
   return { meta, terrain: decodeDem(buf, meta.width, meta.height, meta.cellM) }
 }
 
-/** Render shaded relief + contours once into an offscreen canvas. */
+/** Read an "r g b" CSS custom property from the active theme. */
+function cssRgb(name: string, fallback: [number, number, number]): [number, number, number] {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim().split(/\s+/).map(Number)
+  return v.length === 3 && v.every((n) => Number.isFinite(n)) ? (v as [number, number, number]) : fallback
+}
+
+/** Canvas background outside the terrain; read from the theme when the map renders. */
+let mapBg = '#e9e3d4'
+
+/** Render shaded relief + contours once into an offscreen canvas, in the theme's map colours. */
 function renderBase(t: Terrain): HTMLCanvasElement {
+  mapBg = getComputedStyle(document.documentElement).getPropertyValue('--map-bg').trim() || mapBg
+  const lit = cssRgb('--map-light', [255, 253, 250])
+  const dark = cssRgb('--map-shadow', [120, 135, 165])
+  const [cr, cg, cb] = cssRgb('--contour', [110, 80, 50])
   const S = RENDER_SCALE
   const cv = document.createElement('canvas')
   cv.width = t.width * S
@@ -27,11 +40,11 @@ function renderBase(t: Terrain): HTMLCanvasElement {
   const shade = hillshade(t, 315, 40, 1.4)
   const img = ctx.createImageData(t.width, t.height)
   for (let i = 0; i < shade.length; i++) {
-    // Snowy trail-map palette: warm white in light, cool blue-grey in shadow.
+    // Blend from the theme's shadow colour (s = 0) to its lit colour (s = 1).
     const s = shade[i]
-    img.data[i * 4] = 120 + 135 * s
-    img.data[i * 4 + 1] = 135 + 118 * s
-    img.data[i * 4 + 2] = 165 + 85 * s
+    img.data[i * 4] = dark[0] + (lit[0] - dark[0]) * s
+    img.data[i * 4 + 1] = dark[1] + (lit[1] - dark[1]) * s
+    img.data[i * 4 + 2] = dark[2] + (lit[2] - dark[2]) * s
     img.data[i * 4 + 3] = 255
   }
   const tmp = document.createElement('canvas')
@@ -46,7 +59,7 @@ function renderBase(t: Terrain): HTMLCanvasElement {
   for (const e of t.elev) { min = Math.min(min, e); max = Math.max(max, e) }
   for (let lvl = Math.ceil(min / MINOR_CONTOUR_M) * MINOR_CONTOUR_M; lvl <= max; lvl += MINOR_CONTOUR_M) {
     const index = lvl % INDEX_CONTOUR_M === 0
-    ctx.strokeStyle = index ? 'rgba(110, 80, 50, 0.75)' : 'rgba(110, 80, 50, 0.35)'
+    ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${index ? 0.75 : 0.35})`
     ctx.lineWidth = index ? 1.4 : 0.7
     ctx.beginPath()
     // +0.5: grid values sit at cell centres.
@@ -110,7 +123,7 @@ export function MapView({
     const dpr = window.devicePixelRatio || 1
     const ctx = cv.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.fillStyle = '#e9e3d4'
+    ctx.fillStyle = mapBg
     ctx.fillRect(0, 0, cv.width, cv.height)
     const { scale, tx, ty } = viewRef.current
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * tx, dpr * ty)

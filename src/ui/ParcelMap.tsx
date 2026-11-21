@@ -13,6 +13,9 @@ function drawParcels(
   ctx: CanvasRenderingContext2D, scale: number, parcels: Parcel[],
   style: (p: Parcel) => { fill?: string; stroke: string; width: number; dash?: number[]; label?: string },
 ) {
+  const css = getComputedStyle(document.documentElement)
+  const labelBg = css.getPropertyValue('--surface').trim() || 'rgba(255,253,247,0.9)'
+  const labelInk = css.getPropertyValue('--ink').trim() || '#23303b'
   for (const p of parcels) {
     const st = style(p)
     const x = p.x0 * S, y = p.y0 * S, w = (p.x1 - p.x0) * S, h = (p.y1 - p.y0) * S
@@ -23,13 +26,13 @@ function drawParcels(
     ctx.strokeRect(x, y, w, h)
     if (st.label) {
       const fontPx = 13 / scale
-      ctx.font = `600 ${fontPx}px Georgia, serif`
+      ctx.font = `600 ${fontPx}px ${getComputedStyle(document.documentElement).getPropertyValue('--font').trim() || 'Georgia, serif'}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       const tw = ctx.measureText(st.label).width
-      ctx.fillStyle = 'rgba(255,253,247,0.9)'
+      ctx.fillStyle = labelBg
       ctx.fillRect(x + w / 2 - tw / 2 - 5 / scale, y + h / 2 - fontPx * 0.8, tw + 10 / scale, fontPx * 1.6)
-      ctx.fillStyle = '#23303b'
+      ctx.fillStyle = labelInk
       ctx.fillText(st.label, x + w / 2, y + h / 2)
     }
   }
