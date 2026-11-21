@@ -47,6 +47,13 @@ export interface Site {
   unverified?: (keyof SiteTraits)[]
   /** Where the verified values came from. */
   notes?: string
+  /**
+   * Parcel id with road access. It is always the starter parcel: base area,
+   * parking and the access road go here, and the resort expands outward from it.
+   */
+  accessParcel?: string
+  /** Short description of the road that reaches the access parcel. */
+  accessRoad?: string
 }
 
 // Region list approved by owner (step 2). baseLandUsdPerAcre values are PLACEHOLDERS:
@@ -71,6 +78,10 @@ export const SITES: Site[] = [
   {
     id: 'co-berthoud-pass', regionId: 'colorado', name: 'Berthoud Pass', placeholder: false,
     terrainId: 'co-berthoud-pass',
+    // The terrain window is centred on the pass summit, where US-40 crosses, so the
+    // highway runs through the centre parcel.
+    accessParcel: 'r1c1',
+    accessRoad: 'US-40 crosses the pass here',
     // verticalDropFt = max - min elevation in the 4 km x 4 km USGS 3DEP window
     // (3022-3808 m), i.e. an upper bound for the parcel, not a measured ski run.
     // acres = the 4 km x 4 km window (16 km^2 = 3954 acres).

@@ -102,7 +102,7 @@ export function SiteDetail({ site, region, onBack, onMap, onBuy }: {
     ['Slope aspect', `${t.aspect}-facing`, aspectHint, 'aspect'],
     ['Average snowfall', `${t.avgSnowfallIn} in / year`, undefined, 'avgSnowfallIn'],
     site.terrainId
-      ? ['Whole map', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres, sold as 9 parcels`]
+      ? ['Whole map', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres in 9 parcels; you start with the road-access one`]
       : ['Asking price', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres · breakdown on next screen`],
     ['To interstate', drive(t.driveToInterstateMin), undefined, 'driveToInterstateMin'],
     ['To nearest metro', drive(t.driveToMetroMin), t.nearestMetro, 'driveToMetroMin'],
@@ -119,7 +119,7 @@ export function SiteDetail({ site, region, onBack, onMap, onBuy }: {
             <button className="btn" onClick={onBack}>Back</button>
             {site.terrainId && <button className="btn" onClick={onMap}>Map</button>}
           </div>
-          <button className="btn primary" onClick={onBuy}>{site.terrainId ? 'Choose a parcel…' : 'Buy this land…'}</button>
+          <button className="btn primary" onClick={onBuy}>{site.terrainId ? 'See parcels & buy…' : 'Buy this land…'}</button>
         </>
       }
     >

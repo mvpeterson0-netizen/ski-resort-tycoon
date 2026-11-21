@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areAdjacent, aspectFromDeg, computeParcels, parcelAtCell, parcelLabel } from './parcels'
+import { areAdjacent, aspectFromDeg, buyableParcels, computeParcels, parcelAtCell, parcelLabel } from './parcels'
 import type { Terrain } from './terrain'
 
 /** Cone peak in the middle: each outer parcel faces away from the centre. */
@@ -50,6 +50,10 @@ describe('helpers', () => {
   it('knows adjacency (edges, not corners)', () => {
     expect(areAdjacent(ps[0], ps[1])).toBe(true)
     expect(areAdjacent(ps[0], ps[4])).toBe(false)
+  })
+  it('only lets the owner expand into edge neighbours', () => {
+    expect(buyableParcels(ps, ['r1c1']).map((p) => p.id).sort()).toEqual(['r0c1', 'r1c0', 'r1c2', 'r2c1'])
+    expect(buyableParcels(ps, ['r0c0']).map((p) => p.id).sort()).toEqual(['r0c1', 'r1c0'])
   })
   it('labels parcels by compass position', () => {
     expect(parcelLabel({ col: 0, row: 0 })).toBe('North-west parcel')

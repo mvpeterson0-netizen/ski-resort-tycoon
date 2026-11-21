@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { newGame, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
+import { newGame, regionById, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
 import { PurchaseScreen, ResortHome } from './ui/Purchase'
@@ -101,7 +101,7 @@ export default function App() {
       if (!game.ownedParcels.length) {
         return <MapView terrainId={site.terrainId} backLabel="Back to resort" onBack={() => setNav({ screen: 'home' })} />
       }
-      return <ResortMap site={site} owned={game.ownedParcels} onBack={() => setNav({ screen: 'home' })} />
+      return <ResortMap site={site} region={regionById(site.regionId)!} owned={game.ownedParcels} onBack={() => setNav({ screen: 'home' })} />
     }
   }
 }

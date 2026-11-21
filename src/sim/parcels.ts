@@ -98,3 +98,9 @@ export function parcelTraits(site: Site, p: Parcel): SiteTraits {
 
 /** A copy of the site whose traits describe just this parcel. */
 export const siteForParcel = (site: Site, p: Parcel): Site => ({ ...site, traits: parcelTraits(site, p) })
+
+/** Parcels the owner may buy next: not owned, and sharing an edge with an owned parcel. */
+export function buyableParcels(parcels: Parcel[], owned: string[]): Parcel[] {
+  const own = parcels.filter((p) => owned.includes(p.id))
+  return parcels.filter((p) => !owned.includes(p.id) && own.some((o) => areAdjacent(o, p)))
+}

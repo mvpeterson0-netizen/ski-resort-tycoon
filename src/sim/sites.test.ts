@@ -31,6 +31,12 @@ describe('site catalogue', () => {
   })
 })
 
+describe('access parcels', () => {
+  it('every real-terrain site defines a road-access starter parcel', () => {
+    for (const s of SITES.filter((x) => x.terrainId)) expect(s.accessParcel).toMatch(/^r[0-2]c[0-2]$/)
+  })
+})
+
 describe('aspectSnowRetention', () => {
   it('ranks north above east above south', () => {
     expect(aspectSnowRetention('N')).toBeCloseTo(1)

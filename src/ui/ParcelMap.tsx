@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  computeParcels, landPrice, parcelAtCell, parcelLabel, siteForParcel,
+  buyableParcels, computeParcels, landPrice, parcelAtCell, parcelLabel, siteForParcel,
   type Parcel, type Region, type Site,
 } from '../sim'
 import { MapView, RENDER_SCALE } from './MapView'
@@ -35,50 +35,61 @@ function drawParcels(
   ctx.setLineDash([])
 }
 
-/** Pick a starter parcel on the real terrain map. */
+/** Show the parcel grid; the starter is always the site's road-access parcel. */
 export function ParcelPicker({ site, region, onBack, onChoose }: {
   site: Site; region: Region; onBack: () => void; onChoose: (p: Parcel) => void
 }) {
   const [parcels, setParcels] = useState<Parcel[]>([])
-  const [selected, setSelected] = useState<Parcel | null>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
   const price = (p: Parcel) => landPrice(siteForParcel(site, p), region).totalUsd
+  const starter = parcels.find((p) => p.id === site.accessParcel)
+  const focus = parcels.find((p) => p.id === (focusId ?? site.accessParcel)) ?? null
+  const isStarter = focus?.id === starter?.id
 
   return (
     <MapView
       terrainId={site.terrainId!}
       onBack={onBack}
       onTerrain={(t) => setParcels(computeParcels(t))}
-      onTapCell={(x, y) => setSelected(parcelAtCell(parcels, x, y) ?? null)}
+      onTapCell={(x, y) => setFocusId(parcelAtCell(parcels, x, y)?.id ?? null)}
       overlay={(ctx, scale) =>
         drawParcels(ctx, scale, parcels, (p) =>
-          p.id === selected?.id
-            ? { fill: 'rgba(29,78,137,0.18)', stroke: '#1d4e89', width: 3, label: usd(price(p)) }
-            : { stroke: 'rgba(35,48,59,0.7)', width: 1.5, dash: [6, 4], label: usd(price(p)) },
+          p.id === starter?.id
+            ? { fill: 'rgba(29,78,137,0.18)', stroke: '#1d4e89', width: 3, label: `Road access · ${usd(price(p))}` }
+            : {
+                fill: 'rgba(60,50,40,0.22)',
+                stroke: p.id === focus?.id ? '#23303b' : 'rgba(35,48,59,0.6)',
+                width: p.id === focus?.id ? 2.5 : 1,
+                dash: [6, 4],
+                label: 'Expansion',
+              },
         )
       }
       panel={
         <section className="map-panel">
-          {selected ? (
+          {focus && (
             <>
-              <h3>{parcelLabel(selected)} · {usd(price(selected))}</h3>
+              <h3>
+                {parcelLabel(focus)} · {usd(price(focus))}
+                {isStarter ? <span className="tag">Starter</span> : <span className="tag muted">Expansion, buy later</span>}
+              </h3>
+              {isStarter && site.accessRoad && <p className="hint">{site.accessRoad}. Your base area and parking go here.</p>}
               <div className="mini-stats">
-                <span><b>{selected.acres}</b> acres</span>
-                <span><b>{ft(selected.verticalFt)}</b> vertical</span>
-                <span><b>{selected.aspect}</b> facing</span>
-                <span><b>{Math.round(selected.northShare * 100)}%</b> north-facing</span>
-                <span><b>{Math.round(selected.meanSlopeDeg)}°</b> avg slope</span>
+                <span><b>{focus.acres}</b> acres</span>
+                <span><b>{ft(focus.verticalFt)}</b> vertical</span>
+                <span><b>{focus.aspect}</b> facing</span>
+                <span><b>{Math.round(focus.northShare * 100)}%</b> north-facing</span>
+                <span><b>{Math.round(focus.meanSlopeDeg)}°</b> avg slope</span>
               </div>
             </>
-          ) : (
-            <p className="hint">Tap a parcel to see its terrain and price. Start with one; buy neighbours later.</p>
           )}
         </section>
       }
       actions={
         <div className="row">
           <button className="btn" onClick={onBack}>Back</button>
-          <button className="btn primary" disabled={!selected} onClick={() => selected && onChoose(selected)}>
-            Buy this parcel…
+          <button className="btn primary" disabled={!starter} onClick={() => starter && onChoose(starter)}>
+            Buy starter parcel…
           </button>
         </div>
       }
@@ -87,8 +98,10 @@ export function ParcelPicker({ site, region, onBack, onChoose }: {
 }
 
 /** The player's resort map: owned parcels highlighted, the rest available. */
-export function ResortMap({ site, owned, onBack }: { site: Site; owned: string[]; onBack: () => void }) {
+export function ResortMap({ site, region, owned, onBack }: { site: Site; region: Region; owned: string[]; onBack: () => void }) {
   const [parcels, setParcels] = useState<Parcel[]>([])
+  const buyable = new Set(buyableParcels(parcels, owned).map((p) => p.id))
+  const price = (p: Parcel) => landPrice(siteForParcel(site, p), region).totalUsd
   return (
     <MapView
       terrainId={site.terrainId!}
@@ -99,7 +112,9 @@ export function ResortMap({ site, owned, onBack }: { site: Site; owned: string[]
         drawParcels(ctx, scale, parcels, (p) =>
           owned.includes(p.id)
             ? { stroke: '#1d4e89', width: 3 }
-            : { fill: 'rgba(60,50,40,0.28)', stroke: 'rgba(35,48,59,0.6)', width: 1, dash: [6, 4], label: 'For sale' },
+            : buyable.has(p.id)
+              ? { fill: 'rgba(60,50,40,0.2)', stroke: 'rgba(35,48,59,0.7)', width: 1.5, dash: [6, 4], label: `For sale · ${usd(price(p))}` }
+              : { fill: 'rgba(60,50,40,0.38)', stroke: 'rgba(35,48,59,0.5)', width: 1, dash: [6, 4] },
         )
       }
     />
