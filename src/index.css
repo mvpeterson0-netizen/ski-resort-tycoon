@@ -1,0 +1,54 @@
+/* Three candidate visual styles. Chosen via ?style=trailmap|night|clean while the
+   user decides; the losers get deleted once a style is picked. */
+:root, [data-style='trailmap'] {
+  --bg: #f4efe3; --surface: #fffdf7; --ink: #23303b; --muted: #5d6b75;
+  --accent: #1d4e89; --accent-ink: #fff; --line: #d9cfba;
+  --green: #2e8b3e; --blue: #1d5fbf; --black: #1b1b1b;
+  --snow: #ffffff; --rock: #c9bfa8; --sky: #dbe8f2;
+  --font: Georgia, 'Times New Roman', serif; --radius: 10px;
+}
+[data-style='night'] {
+  --bg: #0f1722; --surface: #18222f; --ink: #e8eef5; --muted: #93a3b5;
+  --accent: #ffb547; --accent-ink: #1a1206; --line: #2a3747;
+  --green: #4cc46a; --blue: #4d93ff; --black: #e8eef5;
+  --snow: #dfe8f2; --rock: #3a4a5c; --sky: #142132;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; --radius: 14px;
+}
+[data-style='clean'] {
+  --bg: #ffffff; --surface: #f3f6fa; --ink: #0d1b2a; --muted: #5a6a7d;
+  --accent: #0a84ff; --accent-ink: #fff; --line: #e1e7ee;
+  --green: #1fa34a; --blue: #0a6cff; --black: #0d1b2a;
+  --snow: #ffffff; --rock: #d7dee7; --sky: #eaf3ff;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; --radius: 18px;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font);
+  -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+}
+.screen {
+  min-height: 100dvh; max-width: 480px; margin: 0 auto;
+  display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) 16px calc(16px + env(safe-area-inset-bottom));
+}
+.hero { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+.hero svg { width: 100%; height: auto; border-radius: var(--radius); background: var(--sky); }
+h1 { font-size: 2rem; margin: 8px 0 0; letter-spacing: -0.01em; }
+.tagline { color: var(--muted); margin: 0; line-height: 1.4; }
+.legend { display: flex; gap: 14px; font-size: 0.85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 12px; height: 12px; display: inline-block; }
+.dot.g { background: var(--green); border-radius: 50%; }
+.dot.b { background: var(--blue); }
+.dot.k { background: var(--black); transform: rotate(45deg) scale(0.85); }
+/* Thumb zone: primary actions sit at the bottom of the screen. */
+.actions { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; }
+.btn {
+  min-height: 52px; border-radius: var(--radius); font: inherit; font-size: 1.05rem;
+  font-weight: 600; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn:disabled { opacity: 0.45; }
+.foot { text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
