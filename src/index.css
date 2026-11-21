@@ -1,14 +1,16 @@
-/* Visual style: "Trail Map" (chosen by owner, step 1). */
+/* Visual style: "Soft Trail" (chosen by owner): Trail Map colours with rounded
+   Nunito type, large soft corners, light borders and gentle shadows. */
 :root {
-  --bg: #f4efe3; --surface: #fffdf7; --ink: #23303b; --muted: #5d6b75;
-  --accent: #1d4e89; --accent-ink: #fff; --line: #d9cfba;
-  --green: #2e8b3e; --blue: #1d5fbf; --black: #1b1b1b;
-  --snow: #ffffff; --rock: #c9bfa8; --sky: #dbe8f2;
-  --font: Georgia, 'Times New Roman', serif; --radius: 10px;
+  --bg: #f6f1e6; --surface: #fffdf8; --ink: #2b3a46; --muted: #6b7882; --line: #ebe3d3;
+  --accent: #2a5a92; --accent-ink: #ffffff;
+  --green: #3a9150; --blue: #2a68c4; --black: #26313a;
+  --snow: #ffffff; --rock: #d6ccb6; --sky: #e2edf5;
+  --font: 'Nunito', system-ui, sans-serif; --radius: 20px;
   --head-font: var(--font);
-  --note-bg: #fff4d6; --note-line: #e8d49a; --danger: #b03a2e;
+  --note-bg: #fdf3dc; --note-line: #f0e1bb; --danger: #c0503f;
+  --shadow: 0 4px 14px rgba(90, 70, 40, 0.08);
   /* Map rendering: lit and shadowed terrain colours, contour colour, canvas background. */
-  --map-light: 255 253 250; --map-shadow: 120 135 165; --contour: 110 80 50; --map-bg: #e9e3d4;
+  --map-light: 255 253 249; --map-shadow: 150 162 186; --contour: 140 110 80; --map-bg: #efe8da;
 }
 h1, h2, h3, .screen-title, .card-title { font-family: var(--head-font); }
 * { box-sizing: border-box; }
@@ -174,3 +176,11 @@ b.down { color: var(--danger); }
 .panel.price b { font-size: 1.3rem; min-width: 56px; text-align: center; }
 .hint.center { text-align: center; }
 .hint.small { font-size: 0.82rem; margin-top: 8px; }
+
+/* Soft Trail finishing touches */
+h1, .screen-title { font-weight: 800; letter-spacing: -0.01em; }
+.group { letter-spacing: 0.06em; }
+.card, .panel, .traits, .kpis div, .btn:not(.primary) { box-shadow: var(--shadow); }
+.btn.primary { box-shadow: 0 6px 16px rgba(42, 90, 146, 0.28); }
+.note { border-radius: 16px; }
+.btn.toggle.on { border: 2px solid var(--accent); }

@@ -22,8 +22,11 @@ with a reduced off-season (building, hiring, financing, summer activities).
   snowmaking, permit difficulty, adjacent parcels for expansion.
 - **Visuals:** 2D top-down map, shaded relief + contours, trail-map look.
 - **Realism:** balanced — real economics underneath, readable and fun on top.
-- **Visual style:** "Trail Map" — cream paper background, serif type, navy accent,
-  green/blue/black difficulty colours (chosen over dark and minimal options).
+- **Visual style:** "Soft Trail" (owner pick from 7 + 2 blend options): Trail Map's
+  cream/navy/green/blue/black palette with rounded Nunito type (bundled via
+  @fontsource, weights 400 + 800 only), 20px corners, light borders, soft shadows,
+  gentler map relief and fainter contours. All colours are CSS variables in `:root`
+  (`src/index.css`), including the map palette (`--map-light/-shadow/--contour`).
 - **Land ownership (step 4):** land is bought outright (no Forest Service lease/permit
   model). Real-terrain sites are split into a 3×3 grid of parcels (`src/sim/parcels.ts`);
   the starter parcel is always the site's road-access parcel (`Site.accessParcel`, where
@@ -119,9 +122,8 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 3. Map view with shaded relief for one real site; pan and pinch zoom. (done: Berthoud Pass, CO)
 4. Land purchase; starting cash and loan setup. (done)
 5. Build trails and one lift with placement and cost. (done; + run-difficulty overlay)
-6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary.
-   ← current (awaiting review)
-7. Cash flow, loans, year-end report.
+6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary. (done)
+7. Cash flow, loans, year-end report. ← current
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands
