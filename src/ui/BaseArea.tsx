@@ -1,30 +1,12 @@
 import { useState } from 'react'
 import {
-  AMENITIES, AMENITY_TUNING, SNOWMAKING, amenityEffects, buyAmenity, buySnowmaking, maxSnowmakingKm, nextAmenityCost, siteById,
+  AMENITIES, SNOWMAKING, amenityEffects, buyAmenity, buySnowmaking, maxSnowmakingKm, nextAmenityCost, siteById,
   type AmenityId, type GameState,
 } from '../sim'
 import { usd } from './format'
+import { effectLine } from './amenityText'
 
 const ORDER: AmenityId[] = ['parking', 'lodge', 'rentals', 'school', 'housing']
-
-/** What the current level of each amenity does, in plain words. */
-function effectLine(id: AmenityId, level: number): string {
-  const T = AMENITY_TUNING
-  switch (id) {
-    case 'parking': {
-      const spaces = T.baseSpaces + level * T.spacesPerLevel
-      return `${spaces.toLocaleString()} spaces · up to ${Math.round(spaces * T.guestsPerSpace).toLocaleString()} guests a day`
-    }
-    case 'lodge':
-      return level === 0 ? 'Snack bar only' : `Food spend ×${T.lodgeFoodMult[level]} · appeal +${Math.round(level * T.lodgeAppealPerLevel * 100)}%`
-    case 'rentals':
-      return level === 0 ? 'Not built' : `+$${T.rentalSpendPerDayGuestUsd} per day-ticket guest · appeal +${Math.round(T.rentalsAppeal * 100)}%`
-    case 'school':
-      return level === 0 ? 'Not built' : `+$${T.lessonSpendPerDayGuestUsd} per day-ticket guest · families +${Math.round(T.schoolAppeal * 100)}%`
-    case 'housing':
-      return level === 0 ? 'No beds: local hires only' : `${level * T.bedsPerHousingLevel} beds for staff`
-  }
-}
 
 export function BaseAreaScreen({ game, onChange, onBack }: { game: GameState; onChange: (g: GameState) => void; onBack: () => void }) {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)

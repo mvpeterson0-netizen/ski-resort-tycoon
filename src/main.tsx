@@ -6,13 +6,9 @@ import '@fontsource/nunito/400.css'
 import '@fontsource/nunito/800.css'
 import './index.css'
 import App from './App.tsx'
-import { VillagePreview } from './ui/village/VillagePreview'
-
-// PREVIEW (owner review): ?preview=village shows the proposed home view. Not linked from the game.
-const preview = new URLSearchParams(window.location.search).get('preview')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {preview === 'village' ? <VillagePreview /> : <App />}
+    <App />
   </StrictMode>,
 )

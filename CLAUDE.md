@@ -121,14 +121,37 @@ with a reduced off-season (building, hiring, financing, summer activities).
   profit, builds staff housing when short of workers, snowmaking on up to half its
   trails, clears credit first) over 20 seeds
   × 15 years on Berthoud Pass. Current Normal medians (staff, snowmaking, events; market
-  base 950): net worth ~$5M → ~$12M (yr 5) → ~$41M (yr 10) → ~$86M (yr 15); operating
+  base 950; land ×0.5 + village package since step 9): net worth ~$5.2M → ~$13M (yr 5) →
+  ~$45M (yr 10) → ~$95M (yr 15); operating
   profit ~$0.6M (yr 1) → ~$13M (yr 15); 0% bankrupt. NOTE: the start is steep — market
   base 900 gave ~15% bankrupt — so small early margins decide survival; growth accelerates (tested). Expansion parcels carry a holdout premium (`expansionPremium`:
   +15% per parcel owned, PLACEHOLDER).
-- **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
-  by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
+- **Starting finances:** fixed starting cash + one mortgage covering land **plus the starter
+  base village** (owner: village on top of the land, start not "crazy"). Down payment by
+  slider (lender minimum applies). `ECON.landPriceScale` 0.5 halves all land prices; the
+  village package is $300k + access road at $600/m (`VILLAGE` in `src/sim/village.ts`).
+  Berthoud start ≈ $620k land + $322k village = $942k. All PLACEHOLDER. The village is an
+  asset (`GameState.villageUsd`) with 3% upkeep.
+- **Base village siting (`src/sim/village.ts`):** after picking the starter parcel the player
+  chooses a base spot: up to 3 suggestions scored on footprint flatness (≤ 10° mean), liftable
+  vertical within 500 m / 1.2 km, and distance to a real road (≤ 1.5 km, closer scores
+  higher), or taps their own spot. Stored as `GameState.base` (v11); older saves get the top
+  suggestion placed automatically. Berthoud's best spot is the pass summit, 37 m off US-40.
+- **Home screen = bird's-eye resort view (`src/ui/ResortView.tsx`, owner-approved):** painted
+  winter terrain (stronger two-light relief, faint contours), real roads, trails cut through
+  forest, lifts with towers/chairs, and the base village laid out beside the road (parking
+  along the access drive). Buildings are pre-rendered 3D sprites that change look with level
+  (lodge art 1–5 = sim lodge 0–4, rentals/school 1–3, housing 1–4, lift terminals by type),
+  drawn ×2.0 life size (owner: "a touch smaller" than 2.4). Close up, trees are 3D fir sprites
+  cleared around everything built; zoomed out, a painted tree layer. Labels on every building
+  and lift (no overlaps). Tap a building → card with level, effect and upgrade (off-season).
+  Tabs: Resort / Build / Village / Prices / Staff / Money; ☰ menu: Land, Settings, Main menu.
+  Trees use a PLACEHOLDER 3,500 m treeline (no land-cover data). Sites without terrain keep
+  the old list-style home.
+- **Building levels (extended to match the art):** lodge 0–4 (warming hut → grand lodge),
+  rentals 1–3, school 1–3 with diminishing spend per level. All PLACEHOLDER.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v10; v2–v9 upgrade automatically, older versions are discarded).
+  (v11; v2–v10 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -168,13 +191,13 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
   commit `public/sites/<id>.dem.bin` + `.json`. Format: 10 m cells, 4 km square,
   uint16 LE decimetres, north-up (~320 KB). The game never fetches tiles at runtime.
 - Real sites list unsourced traits in `unverified`; the UI marks them "est.".
-- Roads (preview, step 9 proposal): **USGS National Transportation Dataset** state shapefile
+- Roads: **USGS National Transportation Dataset** state shapefile
   zips on the same public bucket (`StagedProducts/Tran/Shape/`). Its metadata calls it public
   domain, no use constraints, USGS acknowledgment appreciated (read from the .xml on the bucket;
   usgs.gov itself not checked). Add `"roadsState"` to `scripts/site-sources.json`, run
   `npm run build:roads -- <id>` (~10 s, range requests), commit `public/sites/<id>.roads.json`.
   OpenStreetMap/Overpass and Census TIGER are blocked from the build environment.
-- Building art (preview): pre-rendered 3D sprites. `tools/sprites/` (dev-only three.js studio,
+- Building art: pre-rendered 3D sprites. `tools/sprites/` (dev-only three.js studio,
   original generic designs) → `npm run build:sprites` (headless Chromium via the global
   Playwright) → commit `public/sprites/*.png` + `sprites.json`. No 3D at runtime.
 
@@ -198,7 +221,10 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 8a. Growth loop: reputation, lift/amenity appeal, base-area amenities, land purchase. (done)
 8b. Staff: roles, hiring, wages, housing, shortages. (done)
 8c. Snowmaking. (done)
-8d. Breakdowns & events. ← awaiting review
+8d. Breakdowns & events. (done)
+9. Base village + bird's-eye home: base siting with real roads, village package in the
+   mortgage, pre-rendered building art by level, tabbed home. (done) Next ideas: build mode
+   on the painted map, lifts tied to the base, 3D cars in parking, animated chairs/skiers.
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands
@@ -207,3 +233,5 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 - `npm run lint` — oxlint
 - `npm run build` — type-check + production build
 - `npm run build:dem -- <site-id>` — one-time terrain preprocessing (needs network)
+- `npm run build:roads -- <site-id>` — one-time road preprocessing (needs network)
+- `npm run build:sprites` — re-render building/tree sprites from `tools/sprites/`

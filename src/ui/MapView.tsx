@@ -129,6 +129,7 @@ export function MapView({
     onTapRef.current = onTapCell
     onTerrainRef.current = onTerrain
     drawRef.current = { drawing, onStrokeMove, onStrokeEnd }
+    focusRef.current = focus
     draw()
   })
 

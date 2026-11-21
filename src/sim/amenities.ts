@@ -33,18 +33,29 @@ export const AMENITIES: Record<AmenityId, AmenitySpec> = {
   },
   lodge: {
     id: 'lodge', name: 'Day lodge', blurb: 'Guests spend more on food and like the resort more.',
+    // Level 0 is the warming hut that comes with the base village.
     levels: [
       { costUsd: 1_800_000, dailyCostUsd: 2500 },
       { costUsd: 3_200_000, dailyCostUsd: 4000 },
+      { costUsd: 5_000_000, dailyCostUsd: 5500 },
+      { costUsd: 7_500_000, dailyCostUsd: 7000 },
     ],
   },
   rentals: {
     id: 'rentals', name: 'Rental shop', blurb: 'Rental income, and beginners come more often.',
-    levels: [{ costUsd: 700_000, dailyCostUsd: 900 }],
+    levels: [
+      { costUsd: 700_000, dailyCostUsd: 900 },
+      { costUsd: 900_000, dailyCostUsd: 1100 },
+      { costUsd: 1_200_000, dailyCostUsd: 1300 },
+    ],
   },
   school: {
     id: 'school', name: 'Ski school', blurb: 'Lesson income, and families choose you. Best with green terrain.',
-    levels: [{ costUsd: 600_000, dailyCostUsd: 1600 }],
+    levels: [
+      { costUsd: 600_000, dailyCostUsd: 1600 },
+      { costUsd: 900_000, dailyCostUsd: 2200 },
+      { costUsd: 1_300_000, dailyCostUsd: 2800 },
+    ],
   },
   housing: {
     id: 'housing', name: 'Staff housing', blurb: 'Beds for workers beyond the local hiring pool.',
@@ -65,12 +76,14 @@ export const AMENITY_TUNING = {
   baseSpaces: 500,
   spacesPerLevel: 400,
   guestsPerSpace: 2.5,
-  /** Food spend multiplier by lodge level (snack hut, lodge, big lodge). */
-  lodgeFoodMult: [1.0, 1.35, 1.6],
+  /** Food spend multiplier by lodge level (warming hut, A-frame, A-frame + wing, big lodge, grand lodge). */
+  lodgeFoodMult: [1.0, 1.35, 1.6, 1.8, 1.95],
   lodgeAppealPerLevel: 0.04,
-  rentalSpendPerDayGuestUsd: 9,
+  /** Rental spend per day-ticket guest by rental-shop level (diminishing). */
+  rentalSpendPerDayGuestUsd: [0, 9, 13, 16],
   rentalsAppeal: 0.02,
-  lessonSpendPerDayGuestUsd: 7,
+  /** Lesson spend per day-ticket guest by ski-school level (diminishing). */
+  lessonSpendPerDayGuestUsd: [0, 7, 10, 12],
   schoolAppeal: 0.03,
   /** Extra school appeal when the mountain has green terrain. */
   schoolGreenBonus: 0.02,
@@ -108,8 +121,8 @@ export function amenityEffects(a: AmenityLevels, hasGreenTerrain: boolean): Amen
   return {
     parkingCapGuests: Math.round((T.baseSpaces + a.parking * T.spacesPerLevel) * T.guestsPerSpace),
     foodMult: T.lodgeFoodMult[Math.min(a.lodge, T.lodgeFoodMult.length - 1)],
-    extrasPerDayGuestUsd: a.rentals * T.rentalSpendPerDayGuestUsd + a.school * T.lessonSpendPerDayGuestUsd,
-    lessonsPerDayGuestUsd: a.school * T.lessonSpendPerDayGuestUsd,
+    extrasPerDayGuestUsd: T.rentalSpendPerDayGuestUsd[a.rentals] + T.lessonSpendPerDayGuestUsd[a.school],
+    lessonsPerDayGuestUsd: T.lessonSpendPerDayGuestUsd[a.school],
     housingBeds: (a.housing ?? 0) * T.bedsPerHousingLevel,
     appealMult: appeal,
     dailyCostUsd: daily,

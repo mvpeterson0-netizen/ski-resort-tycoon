@@ -10,6 +10,8 @@ import { aspectSnowRetention } from './sites'
 export const ECON = {
   /** PLACEHOLDER, balance-tuned: covers land plus a starter build with little to spare. */
   startingCashUsd: 5_000_000,
+  /** PLACEHOLDER: global multiplier on land prices (owner asked for a cheaper start). */
+  landPriceScale: 0.5,
   landLoan: {
     /** PLACEHOLDER: annual interest rate (kept modest so financing doesn't dominate play). */
     ratePct: 6,
@@ -83,8 +85,8 @@ export function landPrice(site: Site, region: Region): LandPrice {
   ]
   const product = factors.reduce((p, f) => p * f.factor, 1)
   // Round to the nearest $10k like a listing price.
-  const totalUsd = Math.round((baseUsd * product) / 10_000) * 10_000
-  return { baseUsd, factors, totalUsd }
+  const totalUsd = Math.round((baseUsd * product * ECON.landPriceScale) / 10_000) * 10_000
+  return { baseUsd: baseUsd * ECON.landPriceScale, factors, totalUsd }
 }
 
 /**

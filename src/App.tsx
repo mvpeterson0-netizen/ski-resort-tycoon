@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { beginSeason, newGame, regionById, setDifficulty, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
+import { beginSeason, newGame, regionById, setDifficulty, siteById, type BasePlacement, type GameState, type Parcel, type Region, type Site } from './sim'
 import { BaseAreaScreen } from './ui/BaseArea'
 import { BuildScreen } from './ui/Build'
 import { SeasonScreen } from './ui/Season'
@@ -8,7 +8,9 @@ import { StaffScreen } from './ui/Staff'
 import { BankruptScreen, FinanceScreen, YearEndScreen } from './ui/Finance'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
-import { PurchaseScreen, ResortHome } from './ui/Purchase'
+import { PricesScreen, PurchaseScreen, ResortHome } from './ui/Purchase'
+import { BaseSitePicker } from './ui/BaseSitePicker'
+import { ResortView } from './ui/ResortView'
 import { RegionPicker, SiteDetail, SitePicker, TitleScreen } from './ui/Screens'
 import { clearGame, loadDefaultDifficulty, loadGame, saveDefaultDifficulty, saveGame } from './ui/storage'
 
@@ -19,7 +21,9 @@ type Nav =
   | { screen: 'site'; region: Region; site: Site }
   | { screen: 'map'; region: Region; site: Site }
   | { screen: 'parcels'; region: Region; site: Site }
-  | { screen: 'buy'; region: Region; site: Site; parcel?: Parcel }
+  | { screen: 'basesite'; region: Region; site: Site; parcel: Parcel }
+  | { screen: 'buy'; region: Region; site: Site; parcel?: Parcel; base?: BasePlacement }
+  | { screen: 'prices' }
   | { screen: 'home' }
   | { screen: 'resortMap' }
   | { screen: 'build' }
@@ -92,7 +96,16 @@ export default function App() {
           site={nav.site}
           region={nav.region}
           onBack={() => setNav({ ...nav, screen: 'site' })}
-          onChoose={(parcel) => setNav({ ...nav, screen: 'buy', parcel })}
+          onChoose={(parcel) => setNav({ ...nav, screen: 'basesite', parcel })}
+        />
+      )
+    case 'basesite':
+      return (
+        <BaseSitePicker
+          site={nav.site}
+          parcel={nav.parcel}
+          onBack={() => setNav({ screen: 'parcels', region: nav.region, site: nav.site })}
+          onChoose={(base) => setNav({ ...nav, screen: 'buy', base })}
         />
       )
     case 'buy':
@@ -101,19 +114,43 @@ export default function App() {
           site={nav.site}
           region={nav.region}
           parcel={nav.parcel}
-          onBack={() => setNav({ screen: nav.parcel ? 'parcels' : 'site', region: nav.region, site: nav.site })}
-          onBuy={(plan) => {
+          base={nav.base}
+          onBack={() => setNav(nav.parcel ? { screen: 'basesite', region: nav.region, site: nav.site, parcel: nav.parcel } : { screen: 'site', region: nav.region, site: nav.site })}
+          onBuy={(plan, village) => {
             clearGame()
             // Seed from the clock once at game creation; everything after is deterministic.
-            const g = newGame(nav.site.id, plan, Date.now(), nav.parcel?.id, loadDefaultDifficulty())
+            const g = newGame(nav.site.id, plan, Date.now(), nav.parcel?.id, loadDefaultDifficulty(), village)
             saveGame(g)
             setGame(g)
             setNav({ screen: 'home' })
           }}
         />
       )
-    case 'home':
+    case 'home': {
       if (!game) return <TitleScreen canContinue={false} onContinue={() => {}} onSettings={() => setNav({ screen: 'settings', back: 'title' })} onNew={() => setNav({ screen: 'regions' })} />
+      const startOrContinue = () => {
+        if (game.phase !== 'season') {
+          const g = beginSeason(game, siteById(game.siteId)!)
+          saveGame(g)
+          setGame(g)
+        }
+        setNav({ screen: 'season' })
+      }
+      const homeSite = siteById(game.siteId)
+      if (homeSite?.terrainId) {
+        return (
+          <ResortView
+            game={game}
+            site={homeSite}
+            onChange={persist}
+            onSeason={startOrContinue}
+            onTab={(tab) => setNav({ screen: tab === 'village' ? 'base' : tab === 'money' ? 'finance' : tab })}
+            onLand={() => setNav({ screen: 'resortMap' })}
+            onSettings={() => setNav({ screen: 'settings', back: 'home' })}
+            onQuit={() => setNav({ screen: 'title' })}
+          />
+        )
+      }
       return (
         <ResortHome
           game={game}
@@ -124,18 +161,14 @@ export default function App() {
           onFinance={() => setNav({ screen: 'finance' })}
           onBase={() => setNav({ screen: 'base' })}
           onStaff={() => setNav({ screen: 'staff' })}
-          onSeason={() => {
-            if (game.phase !== 'season') {
-              const site = siteById(game.siteId)!
-              const g = beginSeason(game, site)
-              saveGame(g)
-              setGame(g)
-            }
-            setNav({ screen: 'season' })
-          }}
+          onSeason={startOrContinue}
           onQuit={() => setNav({ screen: 'title' })}
         />
       )
+    }
+    case 'prices':
+      if (!game) return null
+      return <PricesScreen game={game} onChange={persist} onBack={() => setNav({ screen: 'home' })} />
     case 'settings':
       return (
         <SettingsScreen

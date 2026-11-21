@@ -8,6 +8,7 @@ import { AMENITIES, nextAmenityCost, type AmenityId } from './amenities'
 import { BUILD, type LiftType } from './build'
 import type { DifficultySettings } from './difficultySettings'
 import { planPurchase } from './economy'
+import { villagePackageUsd } from './village'
 import { advanceDay, beginSeason, buyAmenity, buySnowmaking, newGame, staffing, type GameState, type Lift, type Trail } from './game'
 import { SNOWMAKING, maxSnowmakingKm } from './snowmaking'
 import { FIN, assetValue, fixedCosts, loanDebt, takeTermLoan, termLoanLimit } from './finance'
@@ -162,7 +163,9 @@ function reinvest(g: GameState, o: Opts, landQueue: number[]): GameState {
 export function runCampaign(opts: CampaignOptions): YearRow[] {
   const o = { bufferUsd: 500_000, downPct: 40, liftsPerParcel: 2, trailKmPerParcel: 6, difficulty: undefined, ...opts }
   const landQueue = [...o.expansionPricesUsd]
-  let g = newGame(o.site.id, planPurchase(o.starterPriceUsd, o.downPct), o.seed, 'start', o.difficulty)
+  // Land plus the starter base village (package only; the test site has no access-road cost).
+  const village = villagePackageUsd(0)
+  let g = newGame(o.site.id, planPurchase(o.starterPriceUsd + village, o.downPct), o.seed, 'start', o.difficulty, { base: null, costUsd: village })
   // Opening build: at least one lift and two trails, even if it dips into the buffer.
   g = addLift(addTrail(addTrail(g)))
   g = reinvest(g, o, landQueue)

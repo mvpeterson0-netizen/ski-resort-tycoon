@@ -39,7 +39,7 @@ describe('buying', () => {
     expect(assetValue(g)).toBe(1_000_000 + AMENITIES.lodge.levels[0].costUsd)
     expect(fixedCosts(g)).toBeGreaterThan(fixedCosts(fresh()))
     expect(amenityUpkeep(g.amenities)).toBeGreaterThan(0)
-    const maxed = { ...g, cashUsd: 1e9, amenities: { ...g.amenities, rentals: 1 } }
+    const maxed = { ...g, cashUsd: 1e9, amenities: { ...g.amenities, rentals: 3 } }
     expect(nextAmenityCost(maxed.amenities, 'rentals')).toBeNull()
     expect(buyAmenity(maxed, 'rentals').ok).toBe(false)
     expect(buyAmenity({ ...g, cashUsd: 0 }, 'parking').ok).toBe(false)

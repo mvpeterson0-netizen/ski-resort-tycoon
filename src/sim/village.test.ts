@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { computeParcels } from './parcels'
 import { decodeDem, type Terrain } from './terrain'
-import { nearestRoadPoint, scoreBaseSite, suggestBaseSites, VILLAGE, type Road } from './village'
+import { nearestRoadPoint, scoreBaseSite, suggestBaseSites, villagePackageUsd, VILLAGE, type Road } from './village'
+import { planPurchase } from './economy'
+import { newGame } from './game'
+import { assetValue, fixedCosts } from './finance'
 
 /** Flat valley floor (west half) rising into a slope (east half). */
 function valley(n = 120, cellM = 10): Terrain {
@@ -76,5 +79,27 @@ describe('base village siting', () => {
       expect(b.x).toBeLessThan(p.x1)
     }
     console.log('Berthoud base suggestions', s.map((b) => ({ ...b, meanSlopeDeg: +b.meanSlopeDeg.toFixed(1) })))
+  })
+})
+
+describe('starter base village package', () => {
+  it('adds the access road to the package price', () => {
+    expect(villagePackageUsd(0)).toBe(VILLAGE.packageUsd)
+    expect(villagePackageUsd(100)).toBe(VILLAGE.packageUsd + 60_000)
+  })
+
+  it('is financed with the land but booked separately', () => {
+    const land = 600_000
+    const village = villagePackageUsd(40)
+    const plan = planPurchase(land + village, 25)
+    const g = newGame('x', plan, 1, 'r1c1', undefined, { base: { x: 10, y: 20, roadM: 40 }, costUsd: village })
+    expect(g.landPaidUsd).toBe(land)
+    expect(g.villageUsd).toBe(village)
+    expect(g.base).toEqual({ x: 10, y: 20, roadM: 40 })
+    expect(g.loans[0].originalUsd).toBe(plan.loanUsd)
+    expect(assetValue(g)).toBe(land + village)
+    // The village carries yearly upkeep like other buildings.
+    const bare = newGame('x', planPurchase(land, 25), 1, 'r1c1')
+    expect(fixedCosts(g)).toBeGreaterThan(fixedCosts(bare))
   })
 })

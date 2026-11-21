@@ -503,7 +503,7 @@ export function drawParking(ctx: CanvasRenderingContext2D, level: number, x: num
 export interface SpriteMeta { w: number; h: number; ax: number; ay: number; pxPerM: number }
 export type Sprites = Map<string, { img: HTMLImageElement; meta: SpriteMeta }>
 /** Sprites are drawn this many times larger than life on the map (legibility). */
-export const SPRITE_SCALE = 2.4
+export const SPRITE_SCALE = 2.0
 /** Trees are drawn a little larger than life too, so they sit with the buildings. */
 export const TREE_SCALE = 1.3
 

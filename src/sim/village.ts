@@ -27,6 +27,11 @@ export const VILLAGE = {
   maxRoadM: 1500,
   /** PLACEHOLDER: access road cost per metre (grading, paving, plowing gear). */
   roadCostPerMUsd: 600,
+  /**
+   * PLACEHOLDER: starter base village bought with the land and rolled into the mortgage:
+   * warming hut (the level-0 lodge), ticket booth, maintenance garage, gravel lot.
+   */
+  packageUsd: 300_000,
 } as const
 
 /** A road from the site's road file: polylines in terrain cell coordinates. */
@@ -158,3 +163,17 @@ export function suggestBaseSites(t: Terrain, parcel: Parcel, count = 3, roads: R
 
 /** Access road cost for a base spot (PLACEHOLDER rate). */
 export const accessRoadCostUsd = (b: BaseSite) => Math.round((b.roadM * VILLAGE.roadCostPerMUsd) / 1000) * 1000
+
+/** Where the base village sits, as stored in the game. */
+export interface BasePlacement {
+  x: number
+  y: number
+  roadM: number
+  roadJoin?: [number, number]
+}
+
+/** Starter village price: the package plus the access road (PLACEHOLDER rates). */
+export const villagePackageUsd = (roadM: number) =>
+  VILLAGE.packageUsd + Math.round((roadM * VILLAGE.roadCostPerMUsd) / 1000) * 1000
+
+export const toPlacement = (b: BaseSite): BasePlacement => ({ x: b.x, y: b.y, roadM: b.roadM, ...(b.roadJoin ? { roadJoin: b.roadJoin } : {}) })

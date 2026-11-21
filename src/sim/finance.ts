@@ -5,7 +5,7 @@
  * sourced figures. There is no depreciation or tax model yet; "net income" here is
  * operating profit minus fixed costs and interest.
  */
-import { amenityBookValue, amenityUpkeep } from './amenities'
+import { AMENITY_TUNING, amenityBookValue, amenityUpkeep } from './amenities'
 import { snowmakingBookValue, snowmakingUpkeep } from './snowmaking'
 import type { GameState, Loan } from './game'
 
@@ -71,6 +71,7 @@ export interface YearReport {
 export function assetValue(g: GameState): number {
   return g.landPaidUsd + g.trails.reduce((s, t) => s + t.costUsd, 0) + g.lifts.reduce((s, l) => s + l.costUsd, 0)
     + amenityBookValue(g.amenities ?? { parking: 0, lodge: 0, rentals: 0, school: 0 }) + snowmakingBookValue(g.snowmakingKm ?? 0)
+    + (g.villageUsd ?? 0)
 }
 
 export const loanDebt = (g: GameState) => g.loans.reduce((s, l) => s + l.balanceUsd, 0)
@@ -89,6 +90,7 @@ export function termLoanLimit(g: GameState): number {
 export function fixedCosts(g: GameState): number {
   return FIN.fixed.baseUsd + g.lifts.length * FIN.fixed.perLiftUsd + g.trails.length * FIN.fixed.perTrailUsd
     + amenityUpkeep(g.amenities ?? { parking: 0, lodge: 0, rentals: 0, school: 0 }) + snowmakingUpkeep(g.snowmakingKm ?? 0)
+    + Math.round((g.villageUsd ?? 0) * AMENITY_TUNING.upkeepShare)
 }
 
 function annualPayment(principal: number, ratePct: number, years: number): number {

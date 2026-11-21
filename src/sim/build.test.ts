@@ -133,7 +133,9 @@ describe('building into game state', () => {
     const { trails: _t, lifts: _l, ...v2 } = { ...fresh(), version: 2 }
     void _t; void _l
     const g = parseSave(JSON.parse(JSON.stringify(v2)))
-    expect(g?.version).toBe(10)
+    expect(g?.version).toBe(11)
+    expect(g?.base).toBeNull()
+    expect(g?.villageUsd).toBe(0)
     expect(g?.snowmakingKm).toBe(0)
     expect(g?.staff.mode).toBe('auto')
     expect(g?.amenities.lodge).toBe(0)

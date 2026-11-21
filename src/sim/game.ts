@@ -14,12 +14,14 @@ import { maxSnowmakingKm, snowmakingEffects, SNOWMAKING } from './snowmaking'
 import { NO_STAFF, fillRate, headcount, localPool, neededStaff, staffEffects, STAFF_TUNING, type Staffing } from './staff'
 import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySettings'
 import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport } from './finance'
+import type { BasePlacement } from './village'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
 // v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
 // v7: season pass price. v8: amenities, reputation. v9: staff. v10: snowmaking.
+// v11: base village placement and package value.
 // Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 10
+export const GAME_STATE_VERSION = 11
 
 export interface Loan {
   id: string
@@ -100,10 +102,22 @@ export interface GameState {
   /** One report per closed year, oldest first. */
   reports: YearReport[]
   bankrupt: boolean
+  /** Base village location (terrain cells); null for older saves until the player places it. */
+  base: BasePlacement | null
+  /** Book value of the starter base village (package + access road). */
+  villageUsd: number
 }
 
+/** The starter base village bought with the land. */
+export interface VillagePurchase { base: BasePlacement | null; costUsd: number }
+
+/**
+ * New game. plan.priceUsd is everything bought at the start (land + village package);
+ * the village part is split out so land and buildings are booked separately.
+ */
 export function newGame(
   siteId: string, plan: PurchasePlan, seed: number, parcelId?: string, difficulty: DifficultySettings = DEFAULT_DIFFICULTY,
+  village: VillagePurchase = { base: null, costUsd: 0 },
 ): GameState {
   if (plan.problem) throw new Error(plan.problem)
   const loans: Loan[] = []
@@ -125,7 +139,7 @@ export function newGame(
     year: 1,
     phase: 'offseason',
     cashUsd: plan.cashAfterUsd,
-    landPaidUsd: plan.priceUsd,
+    landPaidUsd: plan.priceUsd - village.costUsd,
     ownedParcels: parcelId ? [parcelId] : [],
     loans,
     trails: [],
@@ -144,7 +158,14 @@ export function newGame(
     book: { ...emptyBook(ECON.startingCashUsd), capexUsd: plan.priceUsd, newLoansUsd: plan.loanUsd },
     reports: [],
     bankrupt: false,
+    base: village.base,
+    villageUsd: village.costUsd,
   }
+}
+
+/** Place (or move, before anything is built) the base village on a save that has none. */
+export function placeBase(g: GameState, base: BasePlacement): GameState {
+  return { ...g, base }
 }
 
 export const totalDebt = (g: GameState) => g.loans.reduce((s, l) => s + l.balanceUsd, 0) + (g.creditUsd ?? 0)
@@ -196,6 +217,12 @@ export function parseSave(raw: unknown): GameState | null {
   if (g.version === 9) {
     g.snowmakingKm = 0
     if (g.staff) g.staff = { ...g.staff, hired: { ...g.staff.hired, snowmakers: g.staff.hired.snowmakers ?? 0 } }
+    g.version = 10
+  }
+  if (g.version === 10) {
+    // Older resorts get their village placed on the map later (UI suggests a spot); no charge.
+    g.base = null
+    g.villageUsd = 0
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null

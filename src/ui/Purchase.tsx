@@ -1,21 +1,25 @@
 import { useState } from 'react'
 import {
-  ECON, annualDebtService, estimatePassSales, landPrice, seasonBlocker, seasonInputs, parcelLabel, planPurchase, setPassPrice,
-  setTicketPrice, siteById, siteForParcel, totalDebt,
-  type GameState, type Parcel, type Region, type Site,
+  ECON, VILLAGE, annualDebtService, estimatePassSales, landPrice, seasonBlocker, seasonInputs, parcelLabel, planPurchase, setPassPrice,
+  setTicketPrice, siteById, siteForParcel, totalDebt, villagePackageUsd,
+  type BasePlacement, type GameState, type Parcel, type Region, type Site, type VillagePurchase,
 } from '../sim'
 import { usd } from './format'
 
 const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 
-export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
-  site: Site; region: Region; parcel?: Parcel; onBuy: (plan: ReturnType<typeof planPurchase>) => void; onBack: () => void
+export function PurchaseScreen({ site, region, parcel, base, onBuy, onBack }: {
+  site: Site; region: Region; parcel?: Parcel; base?: BasePlacement
+  onBuy: (plan: ReturnType<typeof planPurchase>, village: VillagePurchase) => void; onBack: () => void
 }) {
   const priced = parcel ? siteForParcel(site, parcel) : site
   const price = landPrice(priced, region)
   const { minDownPct, ratePct, termYears } = ECON.landLoan
   const [downPct, setDownPct] = useState(40)
-  const plan = planPurchase(price.totalUsd, downPct)
+  // The starter base village comes on top of the land and is financed with it.
+  const roadM = base?.roadM ?? 0
+  const villageUsd = villagePackageUsd(roadM)
+  const plan = planPurchase(price.totalUsd + villageUsd, downPct)
 
   return (
     <main className="screen">
@@ -29,7 +33,7 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
         <h3 className="group">Asking price</h3>
         <dl className="traits">
           <div className="trait">
-            <dt>Base: {priced.traits.acres.toLocaleString()} acres × {money(region.baseLandUsdPerAcre)}/acre</dt>
+            <dt>Base: {priced.traits.acres.toLocaleString()} acres × {money(region.baseLandUsdPerAcre * ECON.landPriceScale)}/acre</dt>
             <dd>{usd(price.baseUsd)}</dd>
           </div>
           {price.factors.map((f) => (
@@ -39,9 +43,21 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
             </div>
           ))}
           <div className="trait total">
-            <dt>Asking price</dt>
+            <dt>Land price</dt>
             <dd>{money(price.totalUsd)}</dd>
           </div>
+        </dl>
+
+        <h3 className="group">Starter base village</h3>
+        <dl className="traits">
+          <div className="trait">
+            <dt>Village package<small>Warming hut, ticket booth, maintenance garage, gravel lot</small></dt>
+            <dd>{money(VILLAGE.packageUsd)}</dd>
+          </div>
+          {roadM > 0 && (
+            <div className="trait"><dt>Access road<small>{roadM} m from the public road</small></dt><dd>{money(villageUsd - VILLAGE.packageUsd)}</dd></div>
+          )}
+          <div className="trait total"><dt>Land + village</dt><dd>{money(plan.priceUsd)}</dd></div>
         </dl>
 
         <h3 className="group">Financing</h3>
@@ -58,7 +74,7 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
         </div>
         <dl className="traits">
           <div className="trait"><dt>Starting cash</dt><dd>{money(ECON.startingCashUsd)}</dd></div>
-          <div className="trait"><dt>Land mortgage</dt><dd>{money(plan.loanUsd)}<small>{ratePct}% over {termYears} years</small></dd></div>
+          <div className="trait"><dt>Mortgage (land + village)</dt><dd>{money(plan.loanUsd)}<small>{ratePct}% over {termYears} years</small></dd></div>
           <div className="trait"><dt>Yearly mortgage payment</dt><dd>{money(plan.annualPaymentUsd)}</dd></div>
           <div className="trait total">
             <dt>Cash left to build with</dt>
@@ -68,7 +84,7 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
         {plan.problem && <p className="note">{plan.problem}</p>}
       </div>
       <nav className="actions">
-        <button className="btn primary" disabled={!!plan.problem} onClick={() => onBuy(plan)}>
+        <button className="btn primary" disabled={!!plan.problem} onClick={() => onBuy(plan, { base: base ?? null, costUsd: villageUsd })}>
           Buy for {usd(plan.priceUsd)}
         </button>
         <button className="btn" onClick={onBack}>Back</button>
@@ -155,9 +171,40 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
   )
 }
 
-/** Off-season pricing: day ticket and season pass, with a live pass-sales estimate. */
-function PricingPanel({ game, onChange, estimate }: {
-  game: GameState; onChange: (g: GameState) => void; estimate: { passesSold: number; revenueUsd: number }
+/** Prices tab: day ticket (any time) and season pass (off-season), plus last season. */
+export function PricesScreen({ game, onChange, onBack }: { game: GameState; onChange: (g: GameState) => void; onBack: () => void }) {
+  const site = siteById(game.siteId)
+  const inSeason = game.phase === 'season'
+  return (
+    <main className="screen">
+      <h2 className="screen-title">Prices</h2>
+      <div className="content">
+        {site && (
+          <PricingPanel
+            game={game} onChange={onChange} inSeason={inSeason}
+            estimate={inSeason ? null : estimatePassSales(game.year, seasonInputs(game, site), game.passPriceUsd, game.ticketPriceUsd)}
+          />
+        )}
+        {game.lastSeason && (
+          <>
+            <h3 className="group">Last season (year {game.lastSeason.year})</h3>
+            <dl className="traits">
+              <div className="trait"><dt>Days open</dt><dd>{game.lastSeason.openDays} of {game.lastSeason.days}</dd></div>
+              <div className="trait"><dt>Skier visits</dt><dd>{game.lastSeason.guests.toLocaleString()}</dd></div>
+              <div className="trait"><dt>Passes sold</dt><dd>{game.lastSeason.passesSold.toLocaleString()}</dd></div>
+              <div className="trait"><dt>Operating profit</dt><dd>{usd(game.lastSeason.netUsd)}</dd></div>
+            </dl>
+          </>
+        )}
+      </div>
+      <nav className="actions"><button className="btn" onClick={onBack}>Back to resort</button></nav>
+    </main>
+  )
+}
+
+/** Day ticket and season pass prices, with a live pass-sales estimate in the off-season. */
+function PricingPanel({ game, onChange, estimate, inSeason = false }: {
+  game: GameState; onChange: (g: GameState) => void; estimate: { passesSold: number; revenueUsd: number } | null; inSeason?: boolean
 }) {
   const stepper = (label: string, value: number, step: number, set: (v: number) => void, hint: string) => (
     <div className="panel price">
@@ -169,13 +216,17 @@ function PricingPanel({ game, onChange, estimate }: {
   )
   return (
     <>
-      <h3 className="group">Prices for next season</h3>
+      <h3 className="group">{inSeason ? 'Prices this season' : 'Prices for next season'}</h3>
       {stepper('Day ticket', game.ticketPriceUsd, 5, (v) => onChange(setTicketPrice(game, v)), 'Can change any day')}
-      {stepper('Season pass', game.passPriceUsd, 25, (v) => onChange(setPassPrice(game, v)), 'Locked when the season starts')}
-      <p className="hint small center">
-        Estimated <b>{estimate.passesSold.toLocaleString()}</b> passes · <b>{usd(estimate.revenueUsd)}</b> cash when the season starts.
-        Pass holders stop buying day tickets and ski more often.
-      </p>
+      {inSeason ? (
+        <div className="panel price"><span>Season pass<small className="block">Locked for this season</small></span><b>${game.passPriceUsd}</b></div>
+      ) : stepper('Season pass', game.passPriceUsd, 25, (v) => onChange(setPassPrice(game, v)), 'Locked when the season starts')}
+      {estimate && (
+        <p className="hint small center">
+          Estimated <b>{estimate.passesSold.toLocaleString()}</b> passes · <b>{usd(estimate.revenueUsd)}</b> cash when the season starts.
+          Pass holders stop buying day tickets and ski more often.
+        </p>
+      )}
     </>
   )
 }
