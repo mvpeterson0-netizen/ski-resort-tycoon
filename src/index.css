@@ -1,27 +1,11 @@
-/* Three candidate visual styles. Chosen via ?style=trailmap|night|clean while the
-   user decides; the losers get deleted once a style is picked. */
-:root, [data-style='trailmap'] {
+/* Visual style: "Trail Map" (chosen by owner, step 1). */
+:root {
   --bg: #f4efe3; --surface: #fffdf7; --ink: #23303b; --muted: #5d6b75;
   --accent: #1d4e89; --accent-ink: #fff; --line: #d9cfba;
   --green: #2e8b3e; --blue: #1d5fbf; --black: #1b1b1b;
   --snow: #ffffff; --rock: #c9bfa8; --sky: #dbe8f2;
   --font: Georgia, 'Times New Roman', serif; --radius: 10px;
 }
-[data-style='night'] {
-  --bg: #0f1722; --surface: #18222f; --ink: #e8eef5; --muted: #93a3b5;
-  --accent: #ffb547; --accent-ink: #1a1206; --line: #2a3747;
-  --green: #4cc46a; --blue: #4d93ff; --black: #e8eef5;
-  --snow: #dfe8f2; --rock: #3a4a5c; --sky: #142132;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; --radius: 14px;
-}
-[data-style='clean'] {
-  --bg: #ffffff; --surface: #f3f6fa; --ink: #0d1b2a; --muted: #5a6a7d;
-  --accent: #0a84ff; --accent-ink: #fff; --line: #e1e7ee;
-  --green: #1fa34a; --blue: #0a6cff; --black: #0d1b2a;
-  --snow: #ffffff; --rock: #d7dee7; --sky: #eaf3ff;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; --radius: 18px;
-}
-
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 body {
@@ -52,3 +36,34 @@ h1 { font-size: 2rem; margin: 8px 0 0; letter-spacing: -0.01em; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .btn:disabled { opacity: 0.45; }
 .foot { text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
+
+/* Step 2: picker screens */
+.screen-title { margin: 16px 0 8px; font-size: 1.5rem; }
+.content { flex: 1; }
+.actions { position: sticky; bottom: 0; background: var(--bg); padding-bottom: 4px; }
+.group { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 18px 0 8px; }
+.cards { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.card {
+  width: 100%; text-align: left; font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; position: relative;
+  display: flex; flex-direction: column; gap: 6px; min-height: 64px;
+}
+.card:active:not(:disabled) { transform: scale(0.99); background: var(--bg); }
+.card:disabled { opacity: 0.5; }
+.card-title { font-weight: 700; font-size: 1.05rem; padding-right: 90px; }
+.card-sub { color: var(--muted); font-size: 0.9rem; line-height: 1.35; }
+.badge { position: absolute; top: 14px; right: 14px; font-size: 0.75rem; color: var(--accent); font-weight: 600; }
+.card:disabled .badge { color: var(--muted); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 0.9rem; color: var(--muted); }
+.stats b { color: var(--ink); }
+.note { background: #fff4d6; border: 1px solid #e8d49a; border-radius: var(--radius); padding: 10px 12px; font-size: 0.9rem; margin: 4px 0 12px; }
+.traits { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.trait { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.trait:last-child { border-bottom: 0; }
+.trait dt { color: var(--muted); }
+.trait dd { margin: 0; text-align: right; font-weight: 600; }
+.trait small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+.pill { padding: 2px 10px; border-radius: 999px; font-size: 0.85rem; text-transform: capitalize; }
+.pill.good { background: #dcefdc; color: #1f5f2a; }
+.pill.mid { background: #f3e7c4; color: #6b5310; }
+.pill.bad { background: #f4d6d1; color: #7d2417; }

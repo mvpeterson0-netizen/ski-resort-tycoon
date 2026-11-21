@@ -1,39 +1,34 @@
-import { useEffect } from 'react'
-import { SIM_VERSION } from './sim'
-import { MountainArt } from './ui/MountainArt'
+import { useState } from 'react'
+import type { Region, Site } from './sim'
+import { RegionPicker, SiteDetail, SitePicker, TitleScreen } from './ui/Screens'
 
-const STYLES = ['trailmap', 'night', 'clean'] as const
-type StyleName = (typeof STYLES)[number]
-
-function readStyle(): StyleName {
-  const s = new URLSearchParams(window.location.search).get('style')
-  return (STYLES as readonly string[]).includes(s ?? '') ? (s as StyleName) : 'trailmap'
-}
+type Nav =
+  | { screen: 'title' }
+  | { screen: 'regions' }
+  | { screen: 'sites'; region: Region }
+  | { screen: 'site'; region: Region; site: Site }
 
 export default function App() {
-  const style = readStyle()
-  useEffect(() => {
-    document.documentElement.dataset.style = style
-  }, [style])
-  return (
-    <main className="screen">
-      <section className="hero">
-        <MountainArt />
-        <h1>Ski Resort Tycoon</h1>
-        <p className="tagline">
-          Pick a real mountain. Buy the land. Build the lifts. Survive the warm years.
-        </p>
-        <div className="legend">
-          <span><i className="dot g" /> Easier</span>
-          <span><i className="dot b" /> More difficult</span>
-          <span><i className="dot k" /> Most difficult</span>
-        </div>
-      </section>
-      <nav className="actions">
-        <button className="btn primary" disabled>New game (coming in step 2)</button>
-        <button className="btn" disabled>Continue</button>
-      </nav>
-      <p className="foot">Prototype · sim v{SIM_VERSION} · style: {style}</p>
-    </main>
-  )
+  const [nav, setNav] = useState<Nav>({ screen: 'title' })
+  switch (nav.screen) {
+    case 'title':
+      return <TitleScreen onNew={() => setNav({ screen: 'regions' })} />
+    case 'regions':
+      return (
+        <RegionPicker
+          onPick={(region) => setNav({ screen: 'sites', region })}
+          onBack={() => setNav({ screen: 'title' })}
+        />
+      )
+    case 'sites':
+      return (
+        <SitePicker
+          region={nav.region}
+          onPick={(site) => setNav({ screen: 'site', region: nav.region, site })}
+          onBack={() => setNav({ screen: 'regions' })}
+        />
+      )
+    case 'site':
+      return <SiteDetail site={nav.site} onBack={() => setNav({ screen: 'sites', region: nav.region })} />
+  }
 }

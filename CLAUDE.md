@@ -22,6 +22,8 @@ with a reduced off-season (building, hiring, financing, summer activities).
   snowmaking, permit difficulty, adjacent parcels for expansion.
 - **Visuals:** 2D top-down map, shaded relief + contours, trail-map look.
 - **Realism:** balanced — real economics underneath, readable and fun on top.
+- **Visual style:** "Trail Map" — cream paper background, serif type, navy accent,
+  green/blue/black difficulty colours (chosen over dark and minimal options).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -59,12 +61,13 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 - **Terrain data source and licence: NOT YET VERIFIED.** Candidates to check before step 3:
   AWS Open Data "Terrain Tiles" (Mapzen/Tilezen terrarium format) and USGS 3DEP (US
   only). Need to confirm current availability, licence, and attribution requirements.
-- Visual style: three candidates (`?style=trailmap|night|clean`) awaiting owner choice.
 - All economic figures (prices, wages, lift costs) are placeholders until sourced.
+- Region list (9 US + 4 international, `src/sim/sites.ts`) is a proposal awaiting owner
+  review. Region blurbs are general characterisations, not sourced facts.
 
 ## Build order
-1. Scaffold, CLAUDE.md, CI, Pages deploy. ← current
-2. Phone-first shell: region picker → site picker, 2–3 placeholder sites.
+1. Scaffold, CLAUDE.md, CI, Pages deploy. (done, not yet deployed)
+2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. ← current (awaiting review)
 3. Map view with shaded relief for one real site; pan and pinch zoom.
 4. Land purchase; starting cash and loan setup.
 5. Build trails and one lift with placement and cost.
