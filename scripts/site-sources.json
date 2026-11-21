@@ -1,0 +1,14 @@
+{
+  "_comment": "One entry per curated real site. Run `npm run build:dem -- <id>` once; the output in public/sites/ is committed so the game never fetches tiles at runtime. Source: USGS 3DEP 1/3 arc-second DEM (prd-tnm.s3.amazonaws.com StagedProducts).",
+  "sites": [
+    {
+      "id": "co-berthoud-pass",
+      "name": "Berthoud Pass",
+      "centerLat": 39.798,
+      "centerLon": -105.777,
+      "sizeM": 4000,
+      "cellM": 10,
+      "tile": "n40w106"
+    }
+  ]
+}

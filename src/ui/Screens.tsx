@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { REGIONS, SIM_VERSION, aspectSnowRetention, sitesInRegion, type Region, type Site } from '../sim'
+import { REGIONS, SIM_VERSION, aspectSnowRetention, sitesInRegion, type Region, type Site, type SiteTraits } from '../sim'
 import { MountainArt } from './MountainArt'
 import { drive, ft, usd } from './format'
 
@@ -67,7 +67,9 @@ export function RegionPicker({ onPick, onBack }: { onPick: (r: Region) => void; 
 export function SitePicker({ region, onPick, onBack }: { region: Region; onPick: (s: Site) => void; onBack: () => void }) {
   return (
     <Frame title={region.name} bar={<button className="btn" onClick={onBack}>Back to regions</button>}>
-      <p className="note">These sites are invented placeholders for testing. Real mountains come in step 3.</p>
+      {sitesInRegion(region.id).some((s) => s.placeholder) && (
+        <p className="note">Sites marked (placeholder) are invented for testing.</p>
+      )}
       <ul className="cards">
         {sitesInRegion(region.id).map((s) => (
           <li key={s.id}>
@@ -89,38 +91,41 @@ export function SitePicker({ region, onPick, onBack }: { region: Region; onPick:
 
 const RATING_CLASS = { poor: 'bad', fair: 'mid', good: 'good', easy: 'good', moderate: 'mid', hard: 'bad' } as const
 
-export function SiteDetail({ site, onBack }: { site: Site; onBack: () => void }) {
+export function SiteDetail({ site, onBack, onMap }: { site: Site; onBack: () => void; onMap: () => void }) {
   const t = site.traits
   const ret = aspectSnowRetention(t.aspect)
   const aspectHint = ret > 0.7 ? 'Holds snow well' : ret < 0.3 ? 'Sun melts snow fast' : 'Average sun exposure'
-  const rows: [string, ReactNode, string?][] = [
-    ['Vertical drop', ft(t.verticalDropFt)],
-    ['Slope aspect', `${t.aspect}-facing`, aspectHint],
-    ['Average snowfall', `${t.avgSnowfallIn} in / year`],
-    ['Land price', usd(t.landPriceUsd)],
-    ['To interstate', drive(t.driveToInterstateMin)],
-    ['To nearest metro', drive(t.driveToMetroMin), t.nearestMetro],
-    ['Water rights', <span key="w" className={`pill ${RATING_CLASS[t.waterRights]}`}>{t.waterRights}</span>, 'For snowmaking'],
-    ['Permits', <span key="p" className={`pill ${RATING_CLASS[t.permitDifficulty]}`}>{t.permitDifficulty}</span>],
-    ['Adjacent parcels', `${t.adjacentParcels}`, 'Room to expand later'],
+  const rows: [string, ReactNode, string?, (keyof SiteTraits)?][] = [
+    ['Vertical drop', ft(t.verticalDropFt), site.terrainId ? 'Max in parcel, from USGS data' : undefined],
+    ['Slope aspect', `${t.aspect}-facing`, aspectHint, 'aspect'],
+    ['Average snowfall', `${t.avgSnowfallIn} in / year`, undefined, 'avgSnowfallIn'],
+    ['Land price', usd(t.landPriceUsd), undefined, 'landPriceUsd'],
+    ['To interstate', drive(t.driveToInterstateMin), undefined, 'driveToInterstateMin'],
+    ['To nearest metro', drive(t.driveToMetroMin), t.nearestMetro, 'driveToMetroMin'],
+    ['Water rights', <span key="w" className={`pill ${RATING_CLASS[t.waterRights]}`}>{t.waterRights}</span>, 'For snowmaking', 'waterRights'],
+    ['Permits', <span key="p" className={`pill ${RATING_CLASS[t.permitDifficulty]}`}>{t.permitDifficulty}</span>, undefined, 'permitDifficulty'],
+    ['Adjacent parcels', `${t.adjacentParcels}`, 'Room to expand later', 'adjacentParcels'],
   ]
   return (
     <Frame
       title={site.name}
       bar={
         <>
-          <button className="btn primary" disabled>Buy this land (step 4)</button>
+          {site.terrainId && <button className="btn primary" onClick={onMap}>View terrain map</button>}
+          <button className="btn" disabled>Buy this land (step 4)</button>
           <button className="btn" onClick={onBack}>Back to sites</button>
         </>
       }
     >
       {site.placeholder && <p className="note">Placeholder site: every number below is made up.</p>}
+      {site.notes && <p className="note">{site.notes} Values marked <span className="est">est.</span> are placeholders.</p>}
       <dl className="traits">
-        {rows.map(([k, v, hint]) => (
+        {rows.map(([k, v, hint, key]) => (
           <div key={k} className="trait">
             <dt>{k}</dt>
             <dd>
               {v}
+              {key && site.unverified?.includes(key) && <span className="est">est.</span>}
               {hint && <small>{hint}</small>}
             </dd>
           </div>

@@ -54,21 +54,29 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 - Saves in the browser (localStorage or IndexedDB — not yet decided).
 - GitHub Pages via Actions: `ci.yml` tests every push; `deploy.yml` publishes only on
   push to `main`. Vite `base` is `/ski-resort-tycoon/`.
-- Elevation data: preprocess each curated site into a small static file at build time;
-  no tile fetching at runtime.
+- Elevation data (decided step 3): **USGS 3DEP 1/3 arc-second DEM** GeoTIFFs from the
+  public bucket `prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/`.
+  (The `elevation.nationalmap.gov` API is blocked by the build environment's network.)
+  US sites only; international sites will need another source later.
+  One-time per site: add an entry to `scripts/site-sources.json`, run
+  `npm run build:dem -- <id>` (reads only the needed tiles via HTTP range requests, ~5 s),
+  commit `public/sites/<id>.dem.bin` + `.json`. Format: 10 m cells, 4 km square,
+  uint16 LE decimetres, north-up (~320 KB). The game never fetches tiles at runtime.
+- Real sites list unsourced traits in `unverified`; the UI marks them "est.".
 
 ## Open questions / unverified (do not treat as settled)
-- **Terrain data source and licence: NOT YET VERIFIED.** Candidates to check before step 3:
-  AWS Open Data "Terrain Tiles" (Mapzen/Tilezen terrarium format) and USGS 3DEP (US
-  only). Need to confirm current availability, licence, and attribution requirements.
+- **Terrain licence: NOT VERIFIED.** We believe USGS-produced data is public domain with a
+  requested credit to the U.S. Geological Survey, but usgs.gov is blocked from the build
+  environment so this has not been confirmed against the policy page. Owner to check.
+  The app shows "Elevation: USGS 3DEP" on the map.
 - All economic figures (prices, wages, lift costs) are placeholders until sourced.
-- Region list (9 US + 4 international, `src/sim/sites.ts`) is a proposal awaiting owner
-  review. Region blurbs are general characterisations, not sourced facts.
+- Region list (9 US + 4 international) approved by owner. Region blurbs are general
+  characterisations, not sourced facts.
 
 ## Build order
-1. Scaffold, CLAUDE.md, CI, Pages deploy. (done, not yet deployed)
-2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. ← current (awaiting review)
-3. Map view with shaded relief for one real site; pan and pinch zoom.
+1. Scaffold, CLAUDE.md, CI, Pages deploy. (done)
+2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. (done)
+3. Map view with shaded relief for one real site; pan and pinch zoom. ← current: Berthoud Pass, CO
 4. Land purchase; starting cash and loan setup.
 5. Build trails and one lift with placement and cost.
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary.
@@ -80,3 +88,4 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 - `npm test` — Vitest (sim engine)
 - `npm run lint` — oxlint
 - `npm run build` — type-check + production build
+- `npm run build:dem -- <site-id>` — one-time terrain preprocessing (needs network)

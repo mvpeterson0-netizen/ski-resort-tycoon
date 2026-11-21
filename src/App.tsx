@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Region, Site } from './sim'
+import { MapView } from './ui/MapView'
 import { RegionPicker, SiteDetail, SitePicker, TitleScreen } from './ui/Screens'
 
 type Nav =
@@ -7,6 +8,7 @@ type Nav =
   | { screen: 'regions' }
   | { screen: 'sites'; region: Region }
   | { screen: 'site'; region: Region; site: Site }
+  | { screen: 'map'; region: Region; site: Site }
 
 export default function App() {
   const [nav, setNav] = useState<Nav>({ screen: 'title' })
@@ -29,6 +31,14 @@ export default function App() {
         />
       )
     case 'site':
-      return <SiteDetail site={nav.site} onBack={() => setNav({ screen: 'sites', region: nav.region })} />
+      return (
+        <SiteDetail
+          site={nav.site}
+          onBack={() => setNav({ screen: 'sites', region: nav.region })}
+          onMap={() => setNav({ ...nav, screen: 'map' })}
+        />
+      )
+    case 'map':
+      return <MapView terrainId={nav.site.terrainId!} onBack={() => setNav({ ...nav, screen: 'site' })} />
   }
 }

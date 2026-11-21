@@ -38,6 +38,12 @@ export interface Site {
   /** True while the site and its numbers are invented. */
   placeholder: boolean
   traits: SiteTraits
+  /** Static elevation file in public/sites/, if this site has real terrain. */
+  terrainId?: string
+  /** Trait values that are PLACEHOLDER guesses rather than sourced or derived. */
+  unverified?: (keyof SiteTraits)[]
+  /** Where the verified values came from. */
+  notes?: string
 }
 
 // Region list is a proposal for the owner to review (step 2).
@@ -58,6 +64,18 @@ export const REGIONS: Region[] = [
 ]
 
 export const SITES: Site[] = [
+  {
+    id: 'co-berthoud-pass', regionId: 'colorado', name: 'Berthoud Pass', placeholder: false,
+    terrainId: 'co-berthoud-pass',
+    // verticalDropFt = max - min elevation in the 4 km x 4 km USGS 3DEP window
+    // (3022-3808 m), i.e. an upper bound for the parcel, not a measured ski run.
+    traits: { verticalDropFt: 2580, aspect: 'N', avgSnowfallIn: 300, landPriceUsd: 3_000_000,
+      driveToInterstateMin: 20, nearestMetro: 'Denver', driveToMetroMin: 75,
+      waterRights: 'fair', permitDifficulty: 'hard', adjacentParcels: 2 },
+    unverified: ['aspect', 'avgSnowfallIn', 'landPriceUsd', 'driveToInterstateMin', 'driveToMetroMin',
+      'waterRights', 'permitDifficulty', 'adjacentParcels'],
+    notes: 'Real terrain from USGS 3DEP. Former ski area on a US-40 mountain pass. Vertical drop is derived from the elevation data; all other values are PLACEHOLDER estimates.',
+  },
   {
     id: 'ph-north-knob', regionId: 'new-england', name: 'North Knob (placeholder)', placeholder: true,
     traits: { verticalDropFt: 1200, aspect: 'N', avgSnowfallIn: 140, landPriceUsd: 2_500_000,
