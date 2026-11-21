@@ -3,6 +3,7 @@ import { beginSeason, newGame, regionById, setDifficulty, siteById, type GameSta
 import { BuildScreen } from './ui/Build'
 import { SeasonScreen } from './ui/Season'
 import { SettingsScreen } from './ui/Settings'
+import { BankruptScreen, FinanceScreen, YearEndScreen } from './ui/Finance'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
 import { PurchaseScreen, ResortHome } from './ui/Purchase'
@@ -21,11 +22,25 @@ type Nav =
   | { screen: 'resortMap' }
   | { screen: 'build' }
   | { screen: 'season' }
+  | { screen: 'finance' }
+  | { screen: 'report' }
   | { screen: 'settings'; back: 'title' | 'home' }
 
 export default function App() {
   const [nav, setNav] = useState<Nav>({ screen: 'title' })
   const [game, setGame] = useState<GameState | null>(() => loadGame())
+
+  const persist = (g: GameState) => { saveGame(g); setGame(g) }
+
+  // A bankrupt resort can only be reviewed and restarted.
+  if (game?.bankrupt && ['home', 'build', 'finance', 'resortMap'].includes(nav.screen)) {
+    return (
+      <BankruptScreen
+        game={game}
+        onNewGame={() => { clearGame(); setGame(null); setNav({ screen: 'regions' }) }}
+      />
+    )
+  }
 
   switch (nav.screen) {
     case 'title':
@@ -101,6 +116,7 @@ export default function App() {
           onMap={() => setNav({ screen: 'resortMap' })}
           onBuild={() => setNav({ screen: 'build' })}
           onSettings={() => setNav({ screen: 'settings', back: 'home' })}
+          onFinance={() => setNav({ screen: 'finance' })}
           onSeason={() => {
             if (game.phase !== 'season') {
               const site = siteById(game.siteId)!
@@ -134,12 +150,25 @@ export default function App() {
     case 'season':
       if (!game) return null
       return (
-        <SeasonScreen
+        game.phase === 'season' ? (
+          <SeasonScreen game={game} onChange={persist} onExit={() => setNav({ screen: 'home' })} />
+        ) : (
+          <YearEndScreen game={game} onContinue={() => setNav({ screen: 'home' })} />
+        )
+      )
+    case 'finance':
+      if (!game) return null
+      return (
+        <FinanceScreen
           game={game}
-          onChange={(g) => { saveGame(g); setGame(g) }}
-          onExit={() => setNav({ screen: 'home' })}
+          onChange={persist}
+          onReport={() => setNav({ screen: 'report' })}
+          onBack={() => setNav({ screen: 'home' })}
         />
       )
+    case 'report':
+      if (!game || !game.reports.length) return null
+      return <YearEndScreen game={game} onContinue={() => setNav({ screen: 'finance' })} />
     case 'build':
       if (!game) return null
       return (

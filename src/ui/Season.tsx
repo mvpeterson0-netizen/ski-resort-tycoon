@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   SEASON, advanceDay, liftComfortGuests, seasonInputs, seasonTotals, setTicketPrice, siteById,
   type DayResult, type GameState,
@@ -35,7 +34,6 @@ export function SeasonScreen({ game, onChange, onExit }: {
   game: GameState; onChange: (g: GameState) => void; onExit: () => void
 }) {
   const site = siteById(game.siteId)!
-  const [finished, setFinished] = useState<GameState | null>(null)
   const season = game.season
   const today = season?.days.at(-1) ?? null
   const totals = season ? seasonTotals(season.days) : null
@@ -45,31 +43,9 @@ export function SeasonScreen({ game, onChange, onExit }: {
     let g = game
     for (let i = 0; i < n && g.phase === 'season'; i++) g = advanceDay(g, site).game
     onChange(g)
-    if (g.phase !== 'season') setFinished(g)
   }
 
-  if (finished || !season) {
-    const last = (finished ?? game).lastSeason
-    return (
-      <main className="screen">
-        <h2 className="screen-title">Season {last?.year ?? ''} is over</h2>
-        <div className="content">
-          {last && (
-            <dl className="traits">
-              <div className="trait"><dt>Days open</dt><dd>{last.openDays} of {last.days}</dd></div>
-              <div className="trait"><dt>Snowfall</dt><dd>{last.snowfallIn} in</dd></div>
-              <div className="trait"><dt>Skier visits</dt><dd>{last.guests.toLocaleString()}</dd></div>
-              <div className="trait"><dt>Revenue</dt><dd>{money(last.revenueUsd)}</dd></div>
-              <div className="trait"><dt>Operating costs</dt><dd>{money(last.costUsd)}</dd></div>
-              <div className="trait total"><dt>Operating profit</dt><dd className={last.netUsd < 0 ? 'down' : 'up'}>{money(last.netUsd)}</dd></div>
-            </dl>
-          )}
-          <p className="note">Full year-end report with debt payments and off-season costs comes in step 7.</p>
-        </div>
-        <nav className="actions"><button className="btn primary" onClick={onExit}>Back to resort</button></nav>
-      </main>
-    )
-  }
+  if (!season) return null // the app shows the year-end report once the season closes
 
   return (
     <main className="screen">

@@ -90,12 +90,14 @@ describe('season in game state', () => {
     let cash = g.cashUsd
     for (let i = 0; i < SEASON.lengthDays; i++) {
       const r = advanceDay(g, site)
-      expect(r.game.cashUsd).toBe(cash + r.result.netUsd)
+      // The last day also closes the year (fixed costs, debt service), checked in finance tests.
+      if (i < SEASON.lengthDays - 1) expect(r.game.cashUsd).toBe(cash + r.result.netUsd)
       cash = r.game.cashUsd
       g = r.game
     }
     expect(g.phase).toBe('offseason')
     expect(g.year).toBe(2)
     expect(g.lastSeason?.days).toBe(SEASON.lengthDays)
+    expect(g.reports).toHaveLength(1)
   })
 })

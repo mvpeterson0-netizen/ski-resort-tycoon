@@ -10,10 +10,12 @@ import {
 } from './season'
 import type { Site } from './sites'
 import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySettings'
+import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport } from './finance'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
-// v5: difficulty sliders. Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 5
+// v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
+// Older saves from v2 upward are upgraded in parseSave.
+export const GAME_STATE_VERSION = 6
 
 export interface Loan {
   id: string
@@ -71,6 +73,13 @@ export interface GameState {
   /** Ticket price carried between seasons. */
   ticketPriceUsd: number
   difficulty: DifficultySettings
+  /** Drawn balance on the revolving credit line. */
+  creditUsd: number
+  /** Cash-flow counters for the current year. */
+  book: YearBook
+  /** One report per closed year, oldest first. */
+  reports: YearReport[]
+  bankrupt: boolean
 }
 
 export function newGame(
@@ -105,10 +114,15 @@ export function newGame(
     lastSeason: null,
     ticketPriceUsd: SEASON.defaultTicketPriceUsd,
     difficulty: { ...difficulty },
+    creditUsd: 0,
+    // Year 1 opens with the starting cash, then the land purchase and its mortgage.
+    book: { ...emptyBook(ECON.startingCashUsd), capexUsd: plan.priceUsd, newLoansUsd: plan.loanUsd },
+    reports: [],
+    bankrupt: false,
   }
 }
 
-export const totalDebt = (g: GameState) => g.loans.reduce((s, l) => s + l.balanceUsd, 0)
+export const totalDebt = (g: GameState) => g.loans.reduce((s, l) => s + l.balanceUsd, 0) + (g.creditUsd ?? 0)
 export const annualDebtService = (g: GameState) => g.loans.reduce((s, l) => s + l.annualPaymentUsd, 0)
 
 /** Validate a parsed save. Returns null if it is not a usable save of this version. */
@@ -129,6 +143,13 @@ export function parseSave(raw: unknown): GameState | null {
   }
   if (g.version === 4) {
     g.difficulty = { ...DEFAULT_DIFFICULTY }
+    g.version = 5
+  }
+  if (g.version === 5) {
+    g.creditUsd = 0
+    g.book = emptyBook(typeof g.cashUsd === 'number' ? g.cashUsd : 0)
+    g.reports = []
+    g.bankrupt = false
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -153,7 +174,7 @@ export function buildTrail(g: GameState, plan: TrailPlan, name?: string): BuildR
     id, name: name ?? `Trail ${g.trails.length + 1}`, points: plan.points, difficulty: plan.difficulty,
     lengthM: plan.lengthM, verticalM: plan.verticalM, acres: plan.acres, costUsd: plan.costUsd,
   }
-  return { ok: true, game: { ...g, cashUsd: g.cashUsd - plan.costUsd, trails: [...g.trails, trail] } }
+  return { ok: true, game: { ...g, cashUsd: g.cashUsd - plan.costUsd, trails: [...g.trails, trail], book: { ...g.book, capexUsd: g.book.capexUsd + plan.costUsd } } }
 }
 
 export function buildLift(g: GameState, plan: LiftPlan, name?: string): BuildResult {
@@ -164,7 +185,7 @@ export function buildLift(g: GameState, plan: LiftPlan, name?: string): BuildRes
     id, name: name ?? `Lift ${g.lifts.length + 1}`, type: plan.type, bottom: plan.bottom, top: plan.top,
     lengthM: plan.lengthM, verticalM: plan.verticalM, capacityPph: plan.capacityPph, costUsd: plan.costUsd,
   }
-  return { ok: true, game: { ...g, cashUsd: g.cashUsd - plan.costUsd, lifts: [...g.lifts, lift] } }
+  return { ok: true, game: { ...g, cashUsd: g.cashUsd - plan.costUsd, lifts: [...g.lifts, lift], book: { ...g.book, capexUsd: g.book.capexUsd + plan.costUsd } } }
 }
 
 export function seasonInputs(g: GameState, site: Site): SeasonInputs {
@@ -203,21 +224,18 @@ export function setTicketPrice(g: GameState, priceUsd: number): GameState {
 export function advanceDay(g: GameState, site: Site): { game: GameState; result: DayResult } {
   if (!g.season || g.phase !== 'season') throw new Error('No season running')
   const { season, result } = simulateDay(g.season, seasonInputs(g, site))
-  let next: GameState = { ...g, season, cashUsd: g.cashUsd + result.netUsd }
+  // Cash moves by the day's net; a shortfall is covered by the credit line (or bankrupts).
+  let next: GameState = ensureLiquidity({ ...g, season, cashUsd: g.cashUsd + result.netUsd })
   if (seasonOver(season)) next = finishSeason(next)
   return { game: next, result }
 }
 
-/** Close the season. Year-end P&L and debt service arrive in step 7. */
+/** Close the season, then close the year (fixed costs, loan payments, report). */
 export function finishSeason(g: GameState): GameState {
   if (!g.season) return g
-  return {
-    ...g,
-    phase: 'offseason',
-    lastSeason: { ...seasonTotals(g.season.days), year: g.season.year },
-    season: null,
-    year: g.year + 1,
-  }
+  const totals = { ...seasonTotals(g.season.days), year: g.season.year }
+  const closed = closeYear({ ...g, phase: 'offseason', lastSeason: totals, season: null }, totals).game
+  return { ...closed, year: g.year + 1 }
 }
 
 export function setDifficulty(g: GameState, d: Partial<DifficultySettings>): GameState {

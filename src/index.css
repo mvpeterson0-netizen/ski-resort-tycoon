@@ -184,3 +184,8 @@ h1, .screen-title { font-weight: 800; letter-spacing: -0.01em; }
 .btn.primary { box-shadow: 0 6px 16px rgba(42, 90, 146, 0.28); }
 .note { border-radius: 16px; }
 .btn.toggle.on { border: 2px solid var(--accent); }
+
+/* Step 7: finance */
+.credit-bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.credit-bar i { display: block; height: 100%; background: var(--accent); }
+.btn.wide { width: 100%; margin-top: 10px; }

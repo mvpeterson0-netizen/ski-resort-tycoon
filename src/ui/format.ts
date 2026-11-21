@@ -1,5 +1,10 @@
-export const usd = (n: number) =>
-  n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`
+export const usd = (n: number) => {
+  const sign = n < 0 ? '−' : ''
+  const a = Math.abs(n)
+  if (a >= 1_000_000) return `${sign}$${(a / 1_000_000).toFixed(1)}M`
+  if (a >= 1_000) return `${sign}$${Math.round(a / 1000)}k`
+  return `${sign}$${Math.round(a)}`
+}
 
 export const ft = (n: number) => `${n.toLocaleString('en-US')} ft`
 

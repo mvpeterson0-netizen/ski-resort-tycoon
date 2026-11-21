@@ -63,10 +63,18 @@ with a reduced off-season (building, hiring, financing, summer activities).
   operating costs and guest demand. Normal = base tuning. Stored per game
   (`GameState.difficulty`, v5) and as the default for new games (localStorage).
   All multipliers PLACEHOLDER.
+- **Finance (step 7, `src/sim/finance.ts`):** year-end close after each season: off-season
+  fixed costs (base + per lift + per trail), annual loan payments split into interest
+  and principal, credit-line interest. A revolving credit line (limit = share of asset
+  book value, min floor) auto-covers any negative cash, in season or at year end; if it
+  can't, the game is bankrupt. Off-season term loans up to a share of assets minus loan
+  debt. `YearBook` tracks the year's cash flows so each `YearReport` reconciles
+  (start + lines = end, tested). No depreciation or tax yet. All rates/limits/costs
+  PLACEHOLDER in `FIN`. GameState v6 adds creditUsd, book, reports, bankrupt.
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v5; v2–v4 upgrade automatically, older versions are discarded).
+  (v6; v2–v5 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -123,7 +131,7 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 4. Land purchase; starting cash and loan setup. (done)
 5. Build trails and one lift with placement and cost. (done; + run-difficulty overlay)
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary. (done)
-7. Cash flow, loans, year-end report. ← current
+7. Cash flow, loans, year-end report. ← current (awaiting review)
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands
