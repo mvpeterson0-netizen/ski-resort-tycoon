@@ -99,3 +99,36 @@
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 6px 20px rgba(31,90,150,0.12); }
 [data-theme='glacier'] .btn.primary { background: linear-gradient(135deg, #3a95ff, #1f6ad0); box-shadow: 0 6px 16px rgba(31,122,224,0.35); }
 [data-theme='glacier'] .actions { background: rgba(232,243,251,0.97); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+/* 8. Soft Trail: Trail Map colours with Glacier's rounded type and softness */
+[data-theme='soft'], [data-theme='softfrost'] {
+  --bg: #f6f1e6; --surface: #fffdf8; --ink: #2b3a46; --muted: #6b7882; --line: #ebe3d3;
+  --accent: #2a5a92; --accent-ink: #ffffff;
+  --green: #3a9150; --blue: #2a68c4; --black: #26313a;
+  --snow: #ffffff; --rock: #d6ccb6; --sky: #e2edf5;
+  --font: 'Nunito', system-ui, sans-serif; --head-font: 'Nunito', system-ui, sans-serif; --radius: 20px;
+  --note-bg: #fdf3dc; --note-line: #f0e1bb; --danger: #c0503f;
+  /* Softer relief: lighter shadows and fainter brown contours than Trail Map. */
+  --map-light: 255 253 249; --map-shadow: 150 162 186; --contour: 140 110 80; --map-bg: #efe8da;
+}
+:is([data-theme='soft'], [data-theme='softfrost']) h1,
+:is([data-theme='soft'], [data-theme='softfrost']) .screen-title { font-weight: 800; letter-spacing: -0.01em; }
+:is([data-theme='soft'], [data-theme='softfrost']) .card,
+:is([data-theme='soft'], [data-theme='softfrost']) .panel,
+:is([data-theme='soft'], [data-theme='softfrost']) .traits,
+:is([data-theme='soft'], [data-theme='softfrost']) .kpis div,
+:is([data-theme='soft'], [data-theme='softfrost']) .btn:not(.primary) {
+  border-color: var(--line); box-shadow: 0 4px 14px rgba(90, 70, 40, 0.08); }
+:is([data-theme='soft'], [data-theme='softfrost']) .btn.primary { box-shadow: 0 6px 16px rgba(42, 90, 146, 0.28); }
+:is([data-theme='soft'], [data-theme='softfrost']) .note { border-radius: 16px; }
+:is([data-theme='soft'], [data-theme='softfrost']) .group { letter-spacing: 0.06em; }
+
+/* 8b. Soft Trail + Frost: adds Glacier's gentle gradient and frosted cards */
+[data-theme='softfrost'] { --surface: rgba(255, 253, 248, 0.7); }
+[data-theme='softfrost'] body { background: linear-gradient(170deg, #fbf8f1 0%, #f3ede1 55%, #e9eef1 100%) fixed; }
+[data-theme='softfrost'] :is(.card, .panel, .traits, .kpis div, .btn:not(.primary)) {
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+[data-theme='softfrost'] .btn.primary { background: linear-gradient(135deg, #3a72b0, #24508a); }
+[data-theme='softfrost'] .actions { background: rgba(246, 241, 230, 0.97); }
+:is([data-theme='soft'], [data-theme='softfrost']) .btn.toggle.on { border: 2px solid var(--accent); }
+[data-theme='softfrost'] .actions { background: #f5f0e6; }
