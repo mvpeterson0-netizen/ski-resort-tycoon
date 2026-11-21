@@ -78,9 +78,9 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
 }
 
 /** Resort home: the hub screen once the player owns land. Grows in later steps. */
-export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSettings, onFinance, onQuit }: {
+export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSettings, onFinance, onBase, onQuit }: {
   game: GameState; onChange: (g: GameState) => void; onMap: () => void; onBuild: () => void; onSeason: () => void
-  onSettings: () => void; onFinance: () => void; onQuit: () => void
+  onSettings: () => void; onFinance: () => void; onBase: () => void; onQuit: () => void
 }) {
   const inSeason = game.phase === 'season'
   const blocker = seasonBlocker(game)
@@ -96,7 +96,7 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
           <div><span>Cash</span><b>{usd(game.cashUsd)}</b></div>
           <div><span>Debt</span><b>{usd(totalDebt(game))}</b></div>
           <div><span>Debt payments / yr</span><b>{usd(annualDebtService(game))}</b></div>
-          <div><span>Land paid</span><b>{usd(game.landPaidUsd)}</b></div>
+          <div><span>Reputation</span><b>{Math.round(game.reputation * 100)}%</b></div>
         </div>
         <h3 className="group">Mountain</h3>
         <dl className="traits">
@@ -141,8 +141,9 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
             {!blocker && <button className="btn primary" onClick={onSeason}>Start winter season</button>}
             <div className="row">
               {site?.terrainId && (
-                <button className={blocker ? 'btn primary grow' : 'btn grow'} onClick={onBuild}>Build</button>
+                <button className={blocker ? 'btn primary' : 'btn'} onClick={onBuild}>Build</button>
               )}
+              <button className="btn" onClick={onBase}>Base area</button>
               <button className="btn" onClick={onFinance}>Finance</button>
             </div>
             {blocker && <p className="hint center">To open for winter: {blocker.toLowerCase()}.</p>}

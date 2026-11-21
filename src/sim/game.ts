@@ -2,6 +2,7 @@
  * Game state: the single serialisable object the UI saves and loads.
  * Pure data and pure functions; storage itself lives in the UI layer.
  */
+import { AMENITIES, NO_AMENITIES, amenityEffects, nextAmenityCost, type AmenityId, type AmenityLevels } from './amenities'
 import type { Difficulty, LiftPlan, LiftType, Pt, TrailPlan } from './build'
 import { ECON, planPurchase, type PurchasePlan } from './economy'
 import {
@@ -14,9 +15,9 @@ import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport }
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
 // v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
-// v7: season pass price.
+// v7: season pass price. v8: amenities, reputation.
 // Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 7
+export const GAME_STATE_VERSION = 8
 
 export interface Loan {
   id: string
@@ -75,6 +76,9 @@ export interface GameState {
   ticketPriceUsd: number
   /** Season pass price, set in the off-season. */
   passPriceUsd: number
+  amenities: AmenityLevels
+  /** Carries over between seasons; multiplies demand (0.6–1.4). */
+  reputation: number
   difficulty: DifficultySettings
   /** Drawn balance on the revolving credit line. */
   creditUsd: number
@@ -117,6 +121,8 @@ export function newGame(
     lastSeason: null,
     ticketPriceUsd: SEASON.defaultTicketPriceUsd,
     passPriceUsd: SEASON.defaultPassPriceUsd,
+    amenities: { ...NO_AMENITIES },
+    reputation: SEASON.reputation.start,
     difficulty: { ...difficulty },
     creditUsd: 0,
     // Year 1 opens with the starting cash, then the land purchase and its mortgage.
@@ -160,6 +166,11 @@ export function parseSave(raw: unknown): GameState | null {
     g.passPriceUsd = SEASON.defaultPassPriceUsd
     const pre = { passesSold: 0, passVisits: 0, passRevenueUsd: 0, ticketRevenueUsd: 0, foodRevenueUsd: 0, avgConditions: 0 }
     if (g.lastSeason) g.lastSeason = { ...pre, ...(g.lastSeason as object) } as GameState['lastSeason']
+    g.version = 7
+  }
+  if (g.version === 7) {
+    g.amenities = { ...NO_AMENITIES }
+    g.reputation = SEASON.reputation.start
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -208,6 +219,8 @@ export function seasonInputs(g: GameState, site: Site): SeasonInputs {
     trailCount: g.trails.length,
     snowDifficulty: g.difficulty.snow,
     financeDifficulty: g.difficulty.finance,
+    amenity: amenityEffects(g.amenities, g.trails.some((t) => t.difficulty === 'green')),
+    reputation: g.reputation,
   }
 }
 
@@ -252,13 +265,40 @@ export function advanceDay(g: GameState, site: Site): { game: GameState; result:
 export function finishSeason(g: GameState): GameState {
   if (!g.season) return g
   const totals = { ...seasonTotals(g.season.days, g.season), year: g.season.year }
-  const closed = closeYear({ ...g, phase: 'offseason', lastSeason: totals, season: null }, totals).game
+  const closed = closeYear({ ...g, phase: 'offseason', lastSeason: totals, season: null, reputation: g.season.reputation }, totals).game
   return { ...closed, year: g.year + 1 }
 }
 
 export function setDifficulty(g: GameState, d: Partial<DifficultySettings>): GameState {
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
   return { ...g, difficulty: { snow: clamp01(d.snow ?? g.difficulty.snow), finance: clamp01(d.finance ?? g.difficulty.finance) } }
+}
+
+export function buyAmenity(g: GameState, id: AmenityId): BuildResult {
+  const cost = nextAmenityCost(g.amenities, id)
+  if (cost === null) return { ok: false, reason: `${AMENITIES[id].name} is fully built` }
+  if (cost > g.cashUsd) return { ok: false, reason: 'Not enough cash' }
+  return {
+    ok: true,
+    game: {
+      ...g, cashUsd: g.cashUsd - cost, amenities: { ...g.amenities, [id]: g.amenities[id] + 1 },
+      book: { ...g.book, capexUsd: g.book.capexUsd + cost },
+    },
+  }
+}
+
+/** Buy an expansion parcel. The caller checks adjacency and computes the price. */
+export function buyParcel(g: GameState, parcelId: string, priceUsd: number): BuildResult {
+  if (g.ownedParcels.includes(parcelId)) return { ok: false, reason: 'You already own this parcel' }
+  if (g.phase === 'season') return { ok: false, reason: 'Land deals close in the off-season' }
+  if (priceUsd > g.cashUsd) return { ok: false, reason: 'Not enough cash' }
+  return {
+    ok: true,
+    game: {
+      ...g, cashUsd: g.cashUsd - priceUsd, landPaidUsd: g.landPaidUsd + priceUsd,
+      ownedParcels: [...g.ownedParcels, parcelId], book: { ...g.book, capexUsd: g.book.capexUsd + priceUsd },
+    },
+  }
 }
 
 export { planPurchase }

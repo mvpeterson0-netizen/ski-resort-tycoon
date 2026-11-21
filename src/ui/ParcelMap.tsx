@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  buyableParcels, computeParcels, landPrice, parcelAtCell, parcelLabel, siteForParcel,
-  type Parcel, type Region, type Site, type SlopeClass,
+  buyParcel, buyableParcels, computeParcels, expansionPremium, landPrice, parcelAtCell, parcelLabel, siteForParcel,
+  type GameState, type Parcel, type Region, type Site, type SlopeClass,
 } from '../sim'
 import { CLASS_LABEL, CLASS_RGB, renderDifficultyLayer } from './difficultyLayer'
 import { MapView, RENDER_SCALE } from './MapView'
@@ -137,25 +137,80 @@ export function ParcelPicker({ site, region, onBack, onChoose }: {
   )
 }
 
-/** The player's resort map: owned parcels highlighted, the rest available. */
-export function ResortMap({ site, region, owned, onBack }: { site: Site; region: Region; owned: string[]; onBack: () => void }) {
+/** The player's land: owned parcels outlined; tap a neighbouring parcel to buy it. */
+export function ResortMap({ site, region, game, onChange, onBack }: {
+  site: Site; region: Region; game: GameState; onChange: (g: GameState) => void; onBack: () => void
+}) {
   const [parcels, setParcels] = useState<Parcel[]>([])
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)
+  const owned = game.ownedParcels
   const buyable = new Set(buyableParcels(parcels, owned).map((p) => p.id))
-  const price = (p: Parcel) => landPrice(siteForParcel(site, p), region).totalUsd
+  // Neighbours ask more once you run a resort (holdout premium).
+  const price = (p: Parcel) =>
+    Math.round(landPrice(siteForParcel(site, p), region).totalUsd * expansionPremium(owned.length) / 10_000) * 10_000
+  const focus = parcels.find((p) => p.id === focusId) ?? null
+  const canBuy = focus && buyable.has(focus.id)
   return (
     <MapView
       terrainId={site.terrainId!}
       onBack={onBack}
       backLabel="Back to resort"
       onTerrain={(t) => setParcels(computeParcels(t))}
+      onTapCell={(x, y) => { setMessage(null); setFocusId(parcelAtCell(parcels, x, y)?.id ?? null) }}
       overlay={(ctx, scale) =>
         drawParcels(ctx, scale, parcels, (p) =>
           owned.includes(p.id)
-            ? { stroke: '#1d4e89', width: 3 }
+            ? { stroke: '#2a5a92', width: 3 }
             : buyable.has(p.id)
-              ? { fill: 'rgba(60,50,40,0.2)', stroke: 'rgba(35,48,59,0.7)', width: 1.5, dash: [6, 4], label: `For sale · ${usd(price(p))}` }
+              ? {
+                  fill: p.id === focusId ? 'rgba(42,90,146,0.18)' : 'rgba(60,50,40,0.2)',
+                  stroke: p.id === focusId ? '#2a5a92' : 'rgba(35,48,59,0.7)', width: p.id === focusId ? 3 : 1.5,
+                  dash: [6, 4], label: `For sale · ${usd(price(p))}`,
+                }
               : { fill: 'rgba(60,50,40,0.38)', stroke: 'rgba(35,48,59,0.5)', width: 1, dash: [6, 4] },
         )
+      }
+      panel={
+        <section className="map-panel">
+          {focus ? (
+            <>
+              <h3>
+                {parcelLabel(focus)}
+                {owned.includes(focus.id) ? <span className="tag">Owned</span>
+                  : canBuy ? <span className="tag muted">For sale · {usd(price(focus))}</span>
+                  : <span className="tag muted">Not adjacent yet</span>}
+              </h3>
+              <MixBar mix={focus.terrainMix} />
+              <div className="mini-stats">
+                <span><b>{focus.acres}</b> acres</span>
+                <span><b>{ft(focus.verticalFt)}</b> vertical</span>
+                <span><b>{focus.aspect}</b> facing</span>
+              </div>
+            </>
+          ) : (
+            <p className="hint">Tap a parcel next to your land to see it and buy it. Price rises {Math.round((expansionPremium(1) - 1) * 100)}% for each parcel you own.</p>
+          )}
+          {message && <p className={message.ok ? 'ok' : 'warn'}>{message.text}</p>}
+        </section>
+      }
+      actions={
+        <div className="row">
+          <button className="btn" onClick={onBack}>Back</button>
+          {canBuy && (
+            <button
+              className="btn primary grow"
+              disabled={game.phase === 'season'}
+              onClick={() => {
+                const r = buyParcel(game, focus.id, price(focus))
+                if (r.ok) { onChange(r.game); setMessage({ text: `Bought the ${parcelLabel(focus).toLowerCase()}`, ok: true }) }
+                else setMessage({ text: r.reason, ok: false })
+              }}
+            >
+              Buy · {usd(price(focus))}
+            </button>
+          )}
+        </div>
       }
     />
   )

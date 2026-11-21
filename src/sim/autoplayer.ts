@@ -4,10 +4,11 @@
  * Trails and lifts are abstract (no geometry), with costs from the BUILD formulas.
  * Used by balance tests to check pacing; not part of normal play.
  */
+import { AMENITIES, nextAmenityCost, type AmenityId } from './amenities'
 import { BUILD, type LiftType } from './build'
 import type { DifficultySettings } from './difficultySettings'
 import { planPurchase } from './economy'
-import { advanceDay, beginSeason, newGame, type GameState, type Lift, type Trail } from './game'
+import { advanceDay, beginSeason, buyAmenity, newGame, type GameState, type Lift, type Trail } from './game'
 import { FIN, assetValue, fixedCosts, loanDebt, takeTermLoan, termLoanLimit } from './finance'
 import type { Site } from './sites'
 
@@ -96,41 +97,58 @@ const reserve = (g: GameState, o: Opts) => Math.max(o.bufferUsd, fixedCosts(g))
 function reinvest(g: GameState, o: Opts, landQueue: number[]): GameState {
   // A sensible owner clears the credit line before expanding again.
   if (g.creditUsd > 0) return g
-  const crowded = (g.lastSeason?.turnedAway ?? 0) > 0.03 * Math.max(1, g.lastSeason?.guests ?? 0)
-  for (;;) {
+  const guests = Math.max(1, g.lastSeason?.guests ?? 0)
+  const parkingFull = (g.lastSeason?.parkingTurnedAway ?? 0) > 0.02 * guests
+  const crowded = (g.lastSeason?.turnedAway ?? 0) - (g.lastSeason?.parkingTurnedAway ?? 0) > 0.03 * guests
+  type Option = { cost: number; apply: (x: GameState) => GameState }
+  for (let guard = 0; guard < 100; guard++) {
     const parcels = g.ownedParcels.length
     const km = g.trails.reduce((s, t) => s + t.lengthM, 0) / 1000
     const kmRoom = km + TRAIL_M / 1000 <= parcels * o.trailKmPerParcel
     const liftRoom = g.lifts.length < parcels * o.liftsPerParcel
-    let next: { cost: number; apply: (x: GameState) => GameState } | null = null
-    if (crowded && liftRoom) {
-      const type: LiftType = g.lifts.length % 2 === 0 ? 'fixedDouble' : 'fixedQuad'
-      next = { cost: liftCostUsd(type, LIFT_M), apply: addLift }
-    } else if (kmRoom) {
-      next = { cost: trailCostUsd(TRAIL_M), apply: addTrail }
-    } else if (liftRoom && km >= g.lifts.length * 4) {
-      const type: LiftType = g.lifts.length % 2 === 0 ? 'fixedDouble' : 'fixedQuad'
-      next = { cost: liftCostUsd(type, LIFT_M), apply: addLift }
-    } else if (landQueue.length) {
-      const price = landQueue[0]
-      next = { cost: price, apply: (x) => { landQueue.shift(); return addParcel(x, price) } }
+    const liftType: LiftType = g.lifts.length % 2 === 0 ? 'fixedDouble' : 'fixedQuad'
+    const lift: Option = { cost: liftCostUsd(liftType, LIFT_M), apply: addLift }
+    const amenity = (id: AmenityId): Option | null => {
+      const cost = nextAmenityCost(g.amenities, id)
+      return cost === null ? null : { cost, apply: (x: GameState) => { const r = buyAmenity(x, id); return r.ok ? r.game : x } }
     }
-    if (!next) return g
-    const spare = g.cashUsd - reserve(g, o)
-    if (spare < next.cost) {
+    const lodgeMax = g.amenities.lodge >= AMENITIES.lodge.levels.length
+    // Wish-list in priority order; buy the first one that is affordable.
+    const wishes: (Option | null | false)[] = [
+      parkingFull && amenity('parking'),
+      crowded && liftRoom && lift,
+      kmRoom && { cost: trailCostUsd(TRAIL_M), apply: addTrail },
+      g.amenities.lodge === 0 && amenity('lodge'),
+      g.amenities.rentals === 0 && amenity('rentals'),
+      g.amenities.school === 0 && amenity('school'),
+      !lodgeMax && g.lifts.length >= 4 && amenity('lodge'),
+      liftRoom && km >= g.lifts.length * 3 && lift,
+      // Out of room for terrain and lifts on owned land: buy the next parcel.
+      !kmRoom && (!liftRoom || km < g.lifts.length * 3) && landQueue.length > 0 && {
+        cost: landQueue[0], apply: (x: GameState) => { const price = landQueue.shift()!; return addParcel(x, price) },
+      },
+    ]
+    let bought = false
+    for (const w of wishes) {
+      if (!w) continue
+      const spare = g.cashUsd - reserve(g, o)
+      if (spare >= w.cost) { g = w.apply(g); bought = true; break }
       // Borrow the shortfall if the bank allows it and total loan payments stay under
       // a fifth of last season's operating profit (financing stays a minor factor).
-      const need = Math.ceil((next.cost - spare) / 10_000) * 10_000
+      const need = Math.ceil((w.cost - spare) / 10_000) * 10_000
       const pay = need * (FIN.termLoan.ratePct / 100) / (1 - Math.pow(1 + FIN.termLoan.ratePct / 100, -FIN.termLoan.termYears))
       const opProfit = g.lastSeason?.netUsd ?? 0
       const currentPay = g.loans.reduce((s, l) => s + l.annualPaymentUsd, 0)
-      if (need > termLoanLimit(g) || need < FIN.termLoan.minUsd || currentPay + pay > opProfit / 5) return g
+      if (need > termLoanLimit(g) || need < FIN.termLoan.minUsd || currentPay + pay > opProfit / 5) continue
       const r = takeTermLoan(g, need)
-      if (!r.ok) return g
-      g = r.game
+      if (!r.ok) continue
+      g = w.apply(r.game)
+      bought = true
+      break
     }
-    g = next.apply(g)
+    if (!bought) return g
   }
+  return g
 }
 
 export function runCampaign(opts: CampaignOptions): YearRow[] {

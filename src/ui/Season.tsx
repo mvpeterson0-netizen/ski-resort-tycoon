@@ -86,7 +86,8 @@ export function SeasonScreen({ game, onChange, onExit }: {
                 <dt>Guests</dt>
                 <dd>
                   {today.guests.toLocaleString()}
-                  {today.turnedAway > 0 && <small>{today.turnedAway.toLocaleString()} gave up: lifts full</small>}
+                  {today.parkingTurnedAway > 0 && <small>{today.parkingTurnedAway.toLocaleString()} turned away: parking full</small>}
+                  {today.turnedAway - today.parkingTurnedAway > 0 && <small>{(today.turnedAway - today.parkingTurnedAway).toLocaleString()} gave up: lifts full</small>}
                   {today.open && today.turnedAway === 0 && <small>Lift line ~{today.waitMin} min</small>}
                 </dd>
               </div>
@@ -110,6 +111,8 @@ export function SeasonScreen({ game, onChange, onExit }: {
           <div><span>Days open</span><b>{totals!.openDays}</b></div>
           <div><span>Passes sold</span><b>{season.passesSold.toLocaleString()}</b></div>
           <div><span>Pass revenue</span><b>{usd(season.passRevenueUsd)}</b></div>
+          <div><span>Reputation</span><b>{Math.round(season.reputation * 100)}%</b></div>
+          <div><span>Rentals & lessons</span><b>{usd(totals!.extrasRevenueUsd)}</b></div>
         </div>
 
         <div className="panel price">

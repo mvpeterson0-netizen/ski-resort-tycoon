@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { beginSeason, newGame, regionById, setDifficulty, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
+import { BaseAreaScreen } from './ui/BaseArea'
 import { BuildScreen } from './ui/Build'
 import { SeasonScreen } from './ui/Season'
 import { SettingsScreen } from './ui/Settings'
@@ -23,6 +24,7 @@ type Nav =
   | { screen: 'build' }
   | { screen: 'season' }
   | { screen: 'finance' }
+  | { screen: 'base' }
   | { screen: 'report' }
   | { screen: 'settings'; back: 'title' | 'home' }
 
@@ -118,6 +120,7 @@ export default function App() {
           onBuild={() => setNav({ screen: 'build' })}
           onSettings={() => setNav({ screen: 'settings', back: 'home' })}
           onFinance={() => setNav({ screen: 'finance' })}
+          onBase={() => setNav({ screen: 'base' })}
           onSeason={() => {
             if (game.phase !== 'season') {
               const site = siteById(game.siteId)!
@@ -157,6 +160,9 @@ export default function App() {
           <YearEndScreen game={game} onContinue={() => setNav({ screen: 'home' })} />
         )
       )
+    case 'base':
+      if (!game) return null
+      return <BaseAreaScreen game={game} onChange={persist} onBack={() => setNav({ screen: 'home' })} />
     case 'finance':
       if (!game) return null
       return (
@@ -185,7 +191,7 @@ export default function App() {
       if (!game.ownedParcels.length) {
         return <MapView terrainId={site.terrainId} backLabel="Back to resort" onBack={() => setNav({ screen: 'home' })} />
       }
-      return <ResortMap site={site} region={regionById(site.regionId)!} owned={game.ownedParcels} onBack={() => setNav({ screen: 'home' })} />
+      return <ResortMap site={site} region={regionById(site.regionId)!} game={game} onChange={persist} onBack={() => setNav({ screen: 'home' })} />
     }
   }
 }

@@ -31,16 +31,19 @@ const { years } = balanceReport(
 if (process.env.BALANCE_OUT) writeFileSync(process.env.BALANCE_OUT, JSON.stringify(years, null, 2))
 
 describe('pacing on Normal difficulty (reinvesting player)', () => {
-  it('keeps median cash between $0 and ~$4M (about one big lift) through the first decade', () => {
-    for (const y of years.slice(0, 10)) {
-      expect(y.medianCash).toBeGreaterThanOrEqual(0)
-      expect(y.medianCash).toBeLessThanOrEqual(4_000_000)
-    }
+  it('never runs a careful player out of cash (no ceiling: strong play can grow faster)', () => {
+    for (const y of years.slice(0, 10)) expect(y.medianCash).toBeGreaterThanOrEqual(0)
+  })
+
+  it('compounds: growth speeds up as the resort gets bigger (more lifts, more people)', () => {
+    const early = years[4].medianNetWorth - years[0].medianNetWorth
+    const late = years[14].medianNetWorth - years[10].medianNetWorth
+    expect(late).toBeGreaterThan(early)
   })
 
   it('grows net worth, but slowly: no fortune in the first five years', () => {
     expect(years[14].medianNetWorth).toBeGreaterThan(years[0].medianNetWorth * 2)
-    expect(years[4].medianNetWorth).toBeLessThan(years[0].medianNetWorth * 2.5)
+    expect(years[4].medianNetWorth).toBeLessThan(years[0].medianNetWorth * 3)
   })
 
   it('makes bad snow years noticeably worse, without deciding the outcome', () => {

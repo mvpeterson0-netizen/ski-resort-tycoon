@@ -63,6 +63,17 @@ with a reduced off-season (building, hiring, financing, summer activities).
   holders stop buying day tickets and ski 1.6× as often (lift capacity + food, no gate
   revenue). Costs: per-lift daily, per-trail grooming, per-guest variable, daily
   overhead (stand-in for staff until step 8). All PLACEHOLDER in `SEASON`.
+- **Growth loop (owner intent: more lifts → more people → more money → more lifts):**
+  demand appeal grows with trail km (diminishing), lift count (+10% per doubling) and
+  amenities; a persistent **reputation** (0.7–1.2, starts 1.0) multiplies demand and
+  drifts each open day toward the guest experience (conditions, lift lines, terrain
+  variety), so overcrowding costs next year's business.
+- **Base-area amenities (`src/sim/amenities.ts`):** parking (caps guests; base lot ≈ one
+  starter lift), day lodge (food spend ×1.35/×1.6), rental shop and ski school (extra
+  spend per day-ticket guest; school stronger with green terrain). Each level has a
+  build cost, daily running cost, yearly upkeep (3% of cost) and counts as an asset.
+  Bought on the Base Area screen in the off-season. Expansion parcels are bought on the
+  Land map (adjacent only, holdout premium). All PLACEHOLDER. GameState v8.
 - **Financing kept minor (owner request):** land mortgage 6%/25 yr, term loans 6.5%/15 yr,
   credit line 8%, so pricing, lifts and amenities decide outcomes, not interest.
 - **Difficulty sliders (owner request):** Settings screen (title + resort home) with
@@ -79,20 +90,20 @@ with a reduced off-season (building, hiring, financing, summer activities).
   debt. `YearBook` tracks the year's cash flows so each `YearReport` reconciles
   (start + lines = end, tested). No depreciation or tax yet. All rates/limits/costs
   PLACEHOLDER in `FIN`. GameState v6 adds creditUsd, book, reports, bankrupt.
-- **Pacing (owner intent):** reaching big money should take 10+ years. A player who keeps
-  reinvesting should see cash float around $0–3M while net worth grows slowly; bad snow
-  years should lose money. Enforced by `src/sim/balance.test.ts`, which runs the
-  auto-player (`autoplayer.ts`: reinvests into trails/lifts/land, borrows when affordable,
-  clears credit before expanding) over 20 seeds × 15 years on Berthoud Pass. Current
-  Normal result: median cash ~$0.8–3.5M (ceiling checked at ~$4M, about one big lift),
-  net worth ~$5M → ~$33M by year 15, ~4 of 9 parcels by year 15, no bankruptcies for
-  the careful auto-player; worst-decile years earn well below the median. Any economy
-  change must keep these tests green. Expansion parcels carry a holdout premium
-  (`expansionPremium`: +15% per parcel owned, PLACEHOLDER).
+- **Pacing (owner intent):** big money takes 10+ years for a steady player; strong
+  decisions can grow faster (no cash ceiling, owner's call). Enforced by
+  `src/sim/balance.test.ts` with the auto-player (`autoplayer.ts`: works a wish-list —
+  parking when full, lifts when crowded, trails, lodge, rentals, school, bigger lodge,
+  land — buys the first affordable item, borrows only if payments stay < 20% of operating
+  profit, clears credit first) over 20 seeds × 15 years on Berthoud Pass. Current Normal
+  medians: net worth ~$5M → ~$14M (yr 5) → ~$49M (yr 10) → ~$103M (yr 15); operating
+  profit ~$0.6M (yr 1) → ~$12M (yr 10); full build-out ~yr 15; no bankruptcies; growth
+  accelerates (tested). Expansion parcels carry a holdout premium (`expansionPremium`:
+  +15% per parcel owned, PLACEHOLDER).
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v7; v2–v6 upgrade automatically, older versions are discarded).
+  (v8; v2–v7 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -149,7 +160,8 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 4. Land purchase; starting cash and loan setup. (done)
 5. Build trails and one lift with placement and cost. (done; + run-difficulty overlay)
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary. (done)
-7. Cash flow, loans, year-end report. (done) + economy rebalanced for long pacing ← awaiting review
+7. Cash flow, loans, year-end report. (done; season redesign + passes deployed)
+8a. Growth loop: reputation, lift/amenity appeal, base-area amenities, land purchase. ← awaiting review
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands

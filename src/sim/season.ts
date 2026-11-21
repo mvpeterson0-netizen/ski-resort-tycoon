@@ -13,6 +13,7 @@
  * Every coefficient in SEASON is a PLACEHOLDER chosen for readable, playable
  * behaviour — none is sourced from real resort, climate or pass-sales data.
  */
+import { NEUTRAL_EFFECTS, type AmenityEffects } from './amenities'
 import type { LiftType } from './build'
 import { financeModifiers, snowModifiers } from './difficultySettings'
 import { createRng } from './rng'
@@ -58,7 +59,19 @@ export const SEASON = {
     fullTerrainKm: 10,
     terrainExponent: 0.5,
     maxTerrainFactor: 2.0,
+    /** More lifts = more to do: appeal × (1 + k·ln(lift count)). */
+    liftAppealPerLog: 0.1,
     noise: [0.85, 1.15] as const,
+  },
+  reputation: {
+    /** Reputation multiplies demand and carries over years; good operation builds it. */
+    start: 1.0, min: 0.7, max: 1.2,
+    /** How far each open day moves reputation toward that day's experience. */
+    dailyWeight: 0.012,
+    conditionsWeight: 0.35,
+    /** Experience lost per 10 minutes of lift line. */
+    waitPenaltyPer10Min: 0.2,
+    varietyBonus: 0.05,
   },
   passes: {
     /** Share of locals buying a pass at the reference prices. */
@@ -103,6 +116,10 @@ export interface SeasonInputs {
   difficultyKinds: number
   lifts: { type: LiftType; capacityPph: number }[]
   trailCount: number
+  /** Base-area effects; omitted = neutral (no parking cap, standard food spend). */
+  amenity?: AmenityEffects
+  /** Reputation at season start (0.6–1.4); omitted = new resort. */
+  reputation?: number
 }
 
 export interface DayResult {
@@ -124,12 +141,18 @@ export interface DayResult {
   passVisits: number
   /** Guests who gave up because lifts were full. */
   turnedAway: number
+  /** Of those, guests who found the parking full. */
+  parkingTurnedAway: number
   waitMin: number
   ticketPriceUsd: number
   ticketRevenueUsd: number
   foodRevenueUsd: number
+  /** Rentals and lessons. */
+  extrasRevenueUsd: number
   costUsd: number
   netUsd: number
+  /** Reputation after this day. */
+  reputation: number
 }
 
 export interface SeasonState {
@@ -147,6 +170,7 @@ export interface SeasonState {
   /** Share of local demand converted to pass holders this season. */
   passAdoption: number
   passRevenueUsd: number
+  reputation: number
   days: DayResult[]
 }
 
@@ -159,13 +183,17 @@ export interface SeasonTotals {
   passRevenueUsd: number
   ticketRevenueUsd: number
   foodRevenueUsd: number
+  extrasRevenueUsd: number
   revenueUsd: number
   costUsd: number
   netUsd: number
   snowfallIn: number
   /** Guests who gave up because lifts were full. */
   turnedAway: number
+  parkingTurnedAway: number
   avgConditions: number
+  /** Reputation at the end of the season (null if no days). */
+  reputation: number | null
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -211,7 +239,9 @@ function appeal(inp: SeasonInputs): number {
   const access = clamp(1.6 - inp.driveToMetroMin / 150, 0.2, 1.4)
   const terrain = clamp(Math.pow(inp.trailKm / D.fullTerrainKm, D.terrainExponent), 0.15, D.maxTerrainFactor)
     * (0.8 + 0.1 * inp.difficultyKinds)
-  return access * terrain * financeModifiers(inp.financeDifficulty ?? 0.5).demand
+  const lifts = 1 + D.liftAppealPerLog * Math.log(Math.max(1, inp.lifts.length))
+  const amenity = (inp.amenity ?? NEUTRAL_EFFECTS).appealMult
+  return access * terrain * lifts * amenity * financeModifiers(inp.financeDifficulty ?? 0.5).demand
 }
 
 export interface PassEstimate {
@@ -235,7 +265,7 @@ export function estimatePassSales(gameYear: number, inp: SeasonInputs, passPrice
   // Expected local visits over a normal season (conditions 1, no noise).
   let localVisits = 0
   for (let d = 0; d < SEASON.lengthDays; d++) localVisits += D.marketBase * D.localShare * dayFactor(seasonDate(gameYear, d))
-  localVisits *= appeal(inp)
+  localVisits *= appeal(inp) * (inp.reputation ?? SEASON.reputation.start)
   const passesSold = Math.round((adoption * localVisits) / P.visitsPerLocal)
   return { adoption, passesSold, revenueUsd: passesSold * Math.round(passPriceUsd) }
 }
@@ -263,6 +293,7 @@ export function startSeason(
     passesSold: pass.passesSold,
     passAdoption: pass.adoption,
     passRevenueUsd: pass.revenueUsd,
+    reputation: inp.reputation ?? SEASON.reputation.start,
     rngState: rng.state(),
     days: [],
   }
@@ -310,7 +341,8 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   // Demand: locals (some hold passes) and visitors.
   const holiday = isHoliday(date)
   const noise = lerp(D.noise[0], D.noise[1], rng.next())
-  const market = open ? D.marketBase * dayFactor(date) * conditions * appeal(inp) * noise : 0
+  const amen = inp.amenity ?? NEUTRAL_EFFECTS
+  const market = open ? D.marketBase * dayFactor(date) * conditions * appeal(inp) * s.reputation * noise : 0
   const priceFactor = Math.pow(D.referencePriceUsd / s.ticketPriceUsd, D.priceElasticity)
   const locals = market * D.localShare
   const visitors = market - locals
@@ -319,8 +351,10 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const wanted = wantDay + wantPass
 
   const comfort = liftComfortGuests(inp.lifts)
-  const cap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
+  const liftCap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
+  const cap = Math.min(liftCap, amen.parkingCapGuests)
   const guests = Math.round(Math.min(wanted, cap))
+  const parkingTurnedAway = amen.parkingCapGuests < liftCap ? Math.max(0, Math.round(Math.min(wanted, liftCap)) - guests) : 0
   const scale = wanted > 0 ? guests / wanted : 0
   const dayTicketGuests = Math.round(wantDay * scale)
   const passVisits = guests - dayTicketGuests
@@ -330,23 +364,36 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
 
   // Money (pass revenue is booked when the season starts, not per day).
   const ticketRevenueUsd = dayTicketGuests * s.ticketPriceUsd
-  const foodRevenueUsd = guests * M.foodPerGuestUsd
+  const foodRevenueUsd = Math.round(guests * M.foodPerGuestUsd * amen.foodMult)
+  const extrasRevenueUsd = Math.round(dayTicketGuests * amen.extrasPerDayGuestUsd)
   const costUsd = Math.round(finMod.costs * (open
     ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
-      + guests * M.variableCostPerGuestUsd
+      + guests * M.variableCostPerGuestUsd + amen.dailyCostUsd
     : M.overheadClosedUsd))
+
+  // Reputation drifts toward the day's guest experience (conditions, lines, variety).
+  const R = SEASON.reputation
+  let reputation = s.reputation
+  if (open && guests > 0) {
+    const experience = clamp(
+      1 + R.conditionsWeight * (conditions - 1) - (waitMin / 10) * R.waitPenaltyPer10Min + (inp.difficultyKinds - 2) * R.varietyBonus,
+      R.min, R.max,
+    )
+    reputation = clamp(reputation + (experience - reputation) * R.dailyWeight, R.min, R.max)
+  }
 
   const result: DayResult = {
     day: s.day,
     date: date.toISOString().slice(0, 10),
     weekday: date.getUTCDay(), holiday, newSnowIn, warm, baseIn, open, stormClosed, conditions,
-    guests, dayTicketGuests, passVisits, turnedAway, waitMin,
+    guests, dayTicketGuests, passVisits, turnedAway, parkingTurnedAway, waitMin,
     ticketPriceUsd: s.ticketPriceUsd,
-    ticketRevenueUsd, foodRevenueUsd, costUsd,
-    netUsd: ticketRevenueUsd + foodRevenueUsd - costUsd,
+    ticketRevenueUsd, foodRevenueUsd, extrasRevenueUsd, costUsd,
+    netUsd: ticketRevenueUsd + foodRevenueUsd + extrasRevenueUsd - costUsd,
+    reputation: Math.round(reputation * 1000) / 1000,
   }
   return {
-    season: { ...s, day: s.day + 1, baseIn, rngState: rng.state(), days: [...s.days, result] },
+    season: { ...s, day: s.day + 1, baseIn, reputation, rngState: rng.state(), days: [...s.days, result] },
     result,
   }
 }
@@ -357,9 +404,9 @@ export const seasonOver = (s: SeasonState) => s.day >= SEASON.lengthDays
 export function seasonTotals(days: DayResult[], passes?: Pick<SeasonState, 'passesSold' | 'passRevenueUsd'>): SeasonTotals {
   const t: SeasonTotals = {
     days: days.length, openDays: 0, guests: 0, passesSold: passes?.passesSold ?? 0, passVisits: 0,
-    passRevenueUsd: passes?.passRevenueUsd ?? 0, ticketRevenueUsd: 0, foodRevenueUsd: 0,
+    passRevenueUsd: passes?.passRevenueUsd ?? 0, ticketRevenueUsd: 0, foodRevenueUsd: 0, extrasRevenueUsd: 0,
     revenueUsd: passes?.passRevenueUsd ?? 0, costUsd: 0, netUsd: passes?.passRevenueUsd ?? 0,
-    snowfallIn: 0, turnedAway: 0, avgConditions: 0,
+    snowfallIn: 0, turnedAway: 0, parkingTurnedAway: 0, avgConditions: 0, reputation: days.at(-1)?.reputation ?? null,
   }
   let condSum = 0
   for (const d of days) {
@@ -368,11 +415,13 @@ export function seasonTotals(days: DayResult[], passes?: Pick<SeasonState, 'pass
     t.passVisits += d.passVisits
     t.ticketRevenueUsd += d.ticketRevenueUsd
     t.foodRevenueUsd += d.foodRevenueUsd
-    t.revenueUsd += d.ticketRevenueUsd + d.foodRevenueUsd
+    t.extrasRevenueUsd += d.extrasRevenueUsd
+    t.revenueUsd += d.ticketRevenueUsd + d.foodRevenueUsd + d.extrasRevenueUsd
     t.costUsd += d.costUsd
     t.netUsd += d.netUsd
     t.snowfallIn += d.newSnowIn
     t.turnedAway += d.turnedAway
+    t.parkingTurnedAway += d.parkingTurnedAway
   }
   t.avgConditions = t.openDays ? Math.round((condSum / t.openDays) * 100) / 100 : 0
   return t
