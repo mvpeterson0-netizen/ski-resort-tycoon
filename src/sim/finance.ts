@@ -10,8 +10,8 @@ import type { GameState, Loan } from './game'
 export const FIN = {
   credit: {
     /** PLACEHOLDER: credit line limit as a share of asset (book) value. */
-    limitShareOfAssets: 0.2,
-    minLimitUsd: 500_000,
+    limitShareOfAssets: 0.3,
+    minLimitUsd: 1_000_000,
     /** PLACEHOLDER: annual interest on the drawn balance, charged at year end. */
     ratePct: 11,
   },
@@ -23,7 +23,7 @@ export const FIN = {
     minUsd: 100_000,
   },
   /** PLACEHOLDER off-season fixed costs (insurance, property tax, upkeep), per year. */
-  fixed: { baseUsd: 250_000, perLiftUsd: 40_000, perTrailUsd: 5_000 },
+  fixed: { baseUsd: 400_000, perLiftUsd: 80_000, perTrailUsd: 10_000 },
 } as const
 
 /** Running cash-flow counters for the current year, reset at each year-end close. */

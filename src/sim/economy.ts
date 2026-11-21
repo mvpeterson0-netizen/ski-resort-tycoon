@@ -8,8 +8,8 @@ import type { PermitDifficulty, Rating, Region, Site } from './sites'
 import { aspectSnowRetention } from './sites'
 
 export const ECON = {
-  /** PLACEHOLDER: owner's starting cash for a new game. */
-  startingCashUsd: 8_000_000,
+  /** PLACEHOLDER, balance-tuned: covers land plus a starter build with little to spare. */
+  startingCashUsd: 5_000_000,
   landLoan: {
     /** PLACEHOLDER: annual interest rate. */
     ratePct: 7.5,
@@ -86,6 +86,12 @@ export function landPrice(site: Site, region: Region): LandPrice {
   const totalUsd = Math.round((baseUsd * product) / 10_000) * 10_000
   return { baseUsd, factors, totalUsd }
 }
+
+/**
+ * PLACEHOLDER holdout premium: once you run a resort, neighbouring owners ask more.
+ * Multiplies an expansion parcel's price by 1 + 15% per parcel already owned.
+ */
+export const expansionPremium = (parcelsOwned: number) => 1 + 0.15 * Math.max(0, parcelsOwned)
 
 /** Level annual payment for a fully amortising loan. */
 export function annualPayment(principal: number, ratePct: number, termYears: number): number {

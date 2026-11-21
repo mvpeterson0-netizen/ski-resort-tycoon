@@ -18,7 +18,7 @@ export const BUILD = {
     /** PLACEHOLDER: cleared trail width. */
     widthM: 40,
     /** PLACEHOLDER: clearing + grading cost per acre of trail. */
-    costPerAcreUsd: 25_000,
+    costPerAcreUsd: 55_000,
     // Difficulty thresholds live in difficulty.ts (SLOPE), measured on the
     // 90th-percentile steepest point of the line.
     minLengthM: 150,

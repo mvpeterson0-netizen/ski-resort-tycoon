@@ -17,22 +17,24 @@ export const SEASON = {
     // difficulty slider (difficultySettings.ts); Normal = 0.55–1.45 × site average.
     stormChance: 0.22,
     /** Fraction of new snow that ends up as packed base. */
-    settleRatio: 0.35,
+    settleRatio: 0.42,
     /** Chance of a warm day rises from start to end of season. */
-    warmChance: [0.04, 0.2] as const,
-    warmMeltIn: [1, 4] as const,
+    warmChance: [0.035, 0.17] as const,
+    warmMeltIn: [0.75, 3] as const,
     /** Base needed to open (no snowmaking yet). */
     openBaseIn: 18,
   },
   demand: {
-    /** Potential guests on a Saturday for a large, well-known area near a metro. */
-    marketBase: 2500,
+    /** Potential Saturday guests for a ~10 km area near a metro (balance-tuned). */
+    marketBase: 1000,
     weekday: 0.35, saturday: 1, sunday: 0.85, holiday: 1.15,
     /** Ticket price at which the price factor is 1. */
     referencePriceUsd: 90,
     priceElasticity: 1.2,
-    /** Trail km at which the terrain factor reaches 1. */
+    /** Trail km at which the terrain factor is 1; beyond it, diminishing returns. */
     fullTerrainKm: 10,
+    terrainExponent: 0.5,
+    maxTerrainFactor: 2.0,
     noise: [0.85, 1.15] as const,
   },
   lifts: {
@@ -43,11 +45,13 @@ export const SEASON = {
   },
   money: {
     foodPerGuestUsd: 18,
-    liftDailyCostUsd: { ropeTow: 300, fixedDouble: 1500, fixedQuad: 2500 } satisfies Record<LiftType, number>,
-    groomPerTrailUsd: 250,
+    /** Food supplies, card fees, wear and tear per guest. */
+    variableCostPerGuestUsd: 16,
+    liftDailyCostUsd: { ropeTow: 600, fixedDouble: 4000, fixedQuad: 6500 } satisfies Record<LiftType, number>,
+    groomPerTrailUsd: 450,
     // Stand-in for staff wages, insurance and upkeep until those systems exist (step 8).
-    overheadOpenUsd: 12000,
-    overheadClosedUsd: 3000,
+    overheadOpenUsd: 18000,
+    overheadClosedUsd: 5000,
   },
   defaultTicketPriceUsd: 79,
 } as const
@@ -104,6 +108,8 @@ export interface SeasonTotals {
   costUsd: number
   netUsd: number
   snowfallIn: number
+  /** Guests who gave up because lifts were full. */
+  turnedAway: number
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -186,7 +192,8 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const recentSnow = newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0)
   const snowFactor = clamp(baseIn / 40, 0.5, 1.1) * (recentSnow >= 6 ? 1.3 : 1)
   const accessFactor = clamp(1.6 - inp.driveToMetroMin / 150, 0.2, 1.4)
-  const terrainFactor = clamp(inp.trailKm / D.fullTerrainKm, 0.15, 1.2) * (0.8 + 0.1 * inp.difficultyKinds)
+  const terrainFactor = clamp(Math.pow(inp.trailKm / D.fullTerrainKm, D.terrainExponent), 0.15, D.maxTerrainFactor)
+    * (0.8 + 0.1 * inp.difficultyKinds)
   const priceFactor = Math.pow(D.referencePriceUsd / s.ticketPriceUsd, D.priceElasticity)
   const noise = lerp(D.noise[0], D.noise[1], rng.next())
   const wanted = open ? finMod.demand * D.marketBase * dayFactor * snowFactor * accessFactor * terrainFactor * priceFactor * noise : 0
@@ -203,6 +210,7 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const foodRevenueUsd = guests * M.foodPerGuestUsd
   const costUsd = Math.round(finMod.costs * (open
     ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
+      + guests * M.variableCostPerGuestUsd
     : M.overheadClosedUsd))
 
   const result: DayResult = {
@@ -222,7 +230,7 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
 export const seasonOver = (s: SeasonState) => s.day >= SEASON.lengthDays
 
 export function seasonTotals(days: DayResult[]): SeasonTotals {
-  const t: SeasonTotals = { days: days.length, openDays: 0, guests: 0, revenueUsd: 0, costUsd: 0, netUsd: 0, snowfallIn: 0 }
+  const t: SeasonTotals = { days: days.length, openDays: 0, guests: 0, revenueUsd: 0, costUsd: 0, netUsd: 0, snowfallIn: 0, turnedAway: 0 }
   for (const d of days) {
     if (d.open) t.openDays++
     t.guests += d.guests
@@ -230,6 +238,7 @@ export function seasonTotals(days: DayResult[]): SeasonTotals {
     t.costUsd += d.costUsd
     t.netUsd += d.netUsd
     t.snowfallIn += d.newSnowIn
+    t.turnedAway += d.turnedAway
   }
   return t
 }

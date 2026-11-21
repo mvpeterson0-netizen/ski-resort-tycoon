@@ -11,3 +11,5 @@ export { SLOPE, slopeClass, slopeClassDepth, type SlopeClass } from './difficult
 export * from './season'
 export * from './difficultySettings'
 export * from './finance'
+export * from './autoplayer'
+export * from './balanceReport'

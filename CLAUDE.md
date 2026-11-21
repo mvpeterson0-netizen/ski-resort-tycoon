@@ -71,6 +71,15 @@ with a reduced off-season (building, hiring, financing, summer activities).
   debt. `YearBook` tracks the year's cash flows so each `YearReport` reconciles
   (start + lines = end, tested). No depreciation or tax yet. All rates/limits/costs
   PLACEHOLDER in `FIN`. GameState v6 adds creditUsd, book, reports, bankrupt.
+- **Pacing (owner intent):** reaching big money should take 10+ years. A player who keeps
+  reinvesting should see cash float around $0–3M while net worth grows slowly; bad snow
+  years should lose money. Enforced by `src/sim/balance.test.ts`, which runs the
+  auto-player (`autoplayer.ts`: reinvests into trails/lifts/land, borrows when affordable,
+  clears credit before expanding) over 20 seeds × 15 years on Berthoud Pass. Current
+  Normal result: median cash $1.3–3.3M, net worth ~$5.5M → ~$32M by year 15, ~4 of 9
+  parcels owned by year 15, ~15% of aggressive borrowers go bankrupt. Any economy
+  change must keep these tests green. Expansion parcels carry a holdout premium
+  (`expansionPremium`: +15% per parcel owned, PLACEHOLDER).
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
@@ -131,7 +140,7 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 4. Land purchase; starting cash and loan setup. (done)
 5. Build trails and one lift with placement and cost. (done; + run-difficulty overlay)
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary. (done)
-7. Cash flow, loans, year-end report. ← current (awaiting review)
+7. Cash flow, loans, year-end report. (done) + economy rebalanced for long pacing ← awaiting review
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands
