@@ -101,7 +101,9 @@ export function SiteDetail({ site, region, onBack, onMap, onBuy }: {
     ['Vertical drop', ft(t.verticalDropFt), site.terrainId ? 'Max in parcel, from USGS data' : undefined],
     ['Slope aspect', `${t.aspect}-facing`, aspectHint, 'aspect'],
     ['Average snowfall', `${t.avgSnowfallIn} in / year`, undefined, 'avgSnowfallIn'],
-    ['Asking price', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres · breakdown on next screen`],
+    site.terrainId
+      ? ['Whole map', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres, sold as 9 parcels`]
+      : ['Asking price', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres · breakdown on next screen`],
     ['To interstate', drive(t.driveToInterstateMin), undefined, 'driveToInterstateMin'],
     ['To nearest metro', drive(t.driveToMetroMin), t.nearestMetro, 'driveToMetroMin'],
     ['Water rights', <span key="w" className={`pill ${RATING_CLASS[t.waterRights]}`}>{t.waterRights}</span>, 'For snowmaking', 'waterRights'],
@@ -117,7 +119,7 @@ export function SiteDetail({ site, region, onBack, onMap, onBuy }: {
             <button className="btn" onClick={onBack}>Back</button>
             {site.terrainId && <button className="btn" onClick={onMap}>Map</button>}
           </div>
-          <button className="btn primary" onClick={onBuy}>Buy this land…</button>
+          <button className="btn primary" onClick={onBuy}>{site.terrainId ? 'Choose a parcel…' : 'Buy this land…'}</button>
         </>
       }
     >

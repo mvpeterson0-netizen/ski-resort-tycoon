@@ -24,13 +24,16 @@ with a reduced off-season (building, hiring, financing, summer activities).
 - **Realism:** balanced — real economics underneath, readable and fun on top.
 - **Visual style:** "Trail Map" — cream paper background, serif type, navy accent,
   green/blue/black difficulty colours (chosen over dark and minimal options).
-- **Land ownership (step 4):** the player buys the whole parcel outright (no Forest
-  Service lease/permit model). Price = acres × regional base $/acre × bounded factors
+- **Land ownership (step 4):** land is bought outright (no Forest Service lease/permit
+  model). Real-terrain sites are split into a 3×3 grid of parcels (`src/sim/parcels.ts`);
+  the player buys one starter parcel and expands into adjacent parcels later. Per-parcel
+  vertical and aspect are derived from the DEM; other traits are site-wide. Parcel price = acres × regional base $/acre × bounded factors
   (metro access, interstate access, vertical, snowfall, aspect, water rights,
   permitting), all coefficients in `ECON` / `REGIONS` and all PLACEHOLDER.
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
-- **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`.
+- **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
+  (v2; older versions are discarded, no migration while prototyping).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -81,7 +84,7 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
   characterisations, not sourced facts.
 
 ## Build order
-1. Scaffold, CLAUDE.md, CI, Pages deploy. (done)
+1. Scaffold, CLAUDE.md, CI, Pages deploy. (done; repo default branch is `main`)
 2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. (done)
 3. Map view with shaded relief for one real site; pan and pinch zoom. (done: Berthoud Pass, CO)
 4. Land purchase; starting cash and loan setup. ← current (awaiting review)

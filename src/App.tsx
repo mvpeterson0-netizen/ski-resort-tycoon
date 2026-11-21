@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { newGame, regionById, siteById, type GameState, type Region, type Site } from './sim'
+import { newGame, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
 import { MapView } from './ui/MapView'
+import { ParcelPicker, ResortMap } from './ui/ParcelMap'
 import { PurchaseScreen, ResortHome } from './ui/Purchase'
 import { RegionPicker, SiteDetail, SitePicker, TitleScreen } from './ui/Screens'
 import { clearGame, loadGame, saveGame } from './ui/storage'
@@ -11,7 +12,8 @@ type Nav =
   | { screen: 'sites'; region: Region }
   | { screen: 'site'; region: Region; site: Site }
   | { screen: 'map'; region: Region; site: Site }
-  | { screen: 'buy'; region: Region; site: Site }
+  | { screen: 'parcels'; region: Region; site: Site }
+  | { screen: 'buy'; region: Region; site: Site; parcel?: Parcel }
   | { screen: 'home' }
   | { screen: 'resortMap' }
 
@@ -53,21 +55,31 @@ export default function App() {
           region={nav.region}
           onBack={() => setNav({ screen: 'sites', region: nav.region })}
           onMap={() => setNav({ ...nav, screen: 'map' })}
-          onBuy={() => setNav({ ...nav, screen: 'buy' })}
+          onBuy={() => setNav({ ...nav, screen: nav.site.terrainId ? 'parcels' : 'buy' })}
         />
       )
     case 'map':
       return <MapView terrainId={nav.site.terrainId!} onBack={() => setNav({ ...nav, screen: 'site' })} />
+    case 'parcels':
+      return (
+        <ParcelPicker
+          site={nav.site}
+          region={nav.region}
+          onBack={() => setNav({ ...nav, screen: 'site' })}
+          onChoose={(parcel) => setNav({ ...nav, screen: 'buy', parcel })}
+        />
+      )
     case 'buy':
       return (
         <PurchaseScreen
           site={nav.site}
           region={nav.region}
-          onBack={() => setNav({ ...nav, screen: 'site' })}
+          parcel={nav.parcel}
+          onBack={() => setNav({ screen: nav.parcel ? 'parcels' : 'site', region: nav.region, site: nav.site })}
           onBuy={(plan) => {
             clearGame()
             // Seed from the clock once at game creation; everything after is deterministic.
-            const g = newGame(nav.site.id, plan, Date.now())
+            const g = newGame(nav.site.id, plan, Date.now(), nav.parcel?.id)
             saveGame(g)
             setGame(g)
             setNav({ screen: 'home' })
@@ -85,8 +97,11 @@ export default function App() {
       )
     case 'resortMap': {
       const site = game && siteById(game.siteId)
-      if (!site?.terrainId || !regionById(site.regionId)) return null
-      return <MapView terrainId={site.terrainId} backLabel="Back to resort" onBack={() => setNav({ screen: 'home' })} />
+      if (!game || !site?.terrainId) return null
+      if (!game.ownedParcels.length) {
+        return <MapView terrainId={site.terrainId} backLabel="Back to resort" onBack={() => setNav({ screen: 'home' })} />
+      }
+      return <ResortMap site={site} owned={game.ownedParcels} onBack={() => setNav({ screen: 'home' })} />
     }
   }
 }

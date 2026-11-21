@@ -56,7 +56,7 @@ export function elevAt(t: Terrain, x: number, y: number): number {
 }
 
 /** Surface gradient (dz/dx east, dz/dy south) in m/m, central differences. */
-function gradient(t: Terrain, col: number, row: number): [number, number] {
+export function gradient(t: Terrain, col: number, row: number): [number, number] {
   const dzdx = (elevAtCell(t, col + 1, row) - elevAtCell(t, col - 1, row)) / (2 * t.cellM)
   const dzdy = (elevAtCell(t, col, row + 1) - elevAtCell(t, col, row - 1)) / (2 * t.cellM)
   return [dzdx, dzdy]

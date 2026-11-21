@@ -1,30 +1,34 @@
 import { useState } from 'react'
 import {
-  ECON, annualDebtService, landPrice, planPurchase, siteById, totalDebt,
-  type GameState, type Region, type Site,
+  ECON, annualDebtService, landPrice, parcelLabel, planPurchase, siteById, siteForParcel, totalDebt,
+  type GameState, type Parcel, type Region, type Site,
 } from '../sim'
 import { usd } from './format'
 
 const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
 
-export function PurchaseScreen({ site, region, onBuy, onBack }: {
-  site: Site; region: Region; onBuy: (plan: ReturnType<typeof planPurchase>) => void; onBack: () => void
+export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
+  site: Site; region: Region; parcel?: Parcel; onBuy: (plan: ReturnType<typeof planPurchase>) => void; onBack: () => void
 }) {
-  const price = landPrice(site, region)
+  const priced = parcel ? siteForParcel(site, parcel) : site
+  const price = landPrice(priced, region)
   const { minDownPct, ratePct, termYears } = ECON.landLoan
   const [downPct, setDownPct] = useState(40)
   const plan = planPurchase(price.totalUsd, downPct)
 
   return (
     <main className="screen">
-      <h2 className="screen-title">Buy {site.name}</h2>
+      <h2 className="screen-title">Buy {parcel ? `${parcelLabel(parcel)}, ${site.name}` : site.name}</h2>
       <div className="content">
-        <p className="note">All prices, rates and your starting cash are placeholder values for now.</p>
+        <p className="note">
+          All prices, rates and your starting cash are placeholder values for now.
+          {parcel && ' Vertical and aspect are measured for this parcel from USGS elevation data.'}
+        </p>
 
         <h3 className="group">Asking price</h3>
         <dl className="traits">
           <div className="trait">
-            <dt>Base: {site.traits.acres.toLocaleString()} acres × {money(region.baseLandUsdPerAcre)}/acre</dt>
+            <dt>Base: {priced.traits.acres.toLocaleString()} acres × {money(region.baseLandUsdPerAcre)}/acre</dt>
             <dd>{usd(price.baseUsd)}</dd>
           </div>
           {price.factors.map((f) => (

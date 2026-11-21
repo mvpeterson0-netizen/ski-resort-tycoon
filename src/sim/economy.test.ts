@@ -63,6 +63,10 @@ describe('newGame', () => {
     expect(totalDebt(g)).toBe(2_000_000)
     expect(g.year).toBe(1)
   })
+  it('records the starter parcel', () => {
+    expect(newGame('x', planPurchase(1_000_000, 50), 1, 'r1c1').ownedParcels).toEqual(['r1c1'])
+    expect(newGame('x', planPurchase(1_000_000, 50), 1).ownedParcels).toEqual([])
+  })
   it('has no loan when paying cash', () => {
     expect(newGame('x', planPurchase(1_000_000, 100), 1).loans).toEqual([])
   })

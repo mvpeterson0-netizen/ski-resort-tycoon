@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { contourSegments, decodeDem, elevAt, hillshade, slopeDeg, type Terrain, type TerrainMeta } from '../sim'
 
-const RENDER_SCALE = 2 // offscreen pixels per grid cell
+/** Offscreen pixels per terrain cell. Overlays draw in these units. */
+export const RENDER_SCALE = 2
 const MINOR_CONTOUR_M = 20
 const INDEX_CONTOUR_M = 100
 const MAX_ZOOM = 8
@@ -58,7 +59,22 @@ function renderBase(t: Terrain): HTMLCanvasElement {
   return cv
 }
 
-export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { terrainId: string; onBack: () => void; backLabel?: string }) {
+export interface MapViewProps {
+  terrainId: string
+  onBack: () => void
+  backLabel?: string
+  /** Draws on top of the terrain, in base-image pixels (RENDER_SCALE per cell). */
+  overlay?: (ctx: CanvasRenderingContext2D, viewScale: number) => void
+  /** If set, taps go here (terrain cell coords) instead of the elevation readout. */
+  onTapCell?: (x: number, y: number) => void
+  onTerrain?: (t: Terrain) => void
+  /** Content shown between the map and the action bar. */
+  panel?: ReactNode
+  /** Replaces the default Back button. */
+  actions?: ReactNode
+}
+
+export function MapView({ terrainId, onBack, backLabel = 'Back to site', overlay, onTapCell, onTerrain, panel, actions }: MapViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const baseRef = useRef<HTMLCanvasElement | null>(null)
   const terrainRef = useRef<Terrain | null>(null)
@@ -68,6 +84,15 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { ter
   const [error, setError] = useState<string | null>(null)
   const [probe, setProbe] = useState<Probe | null>(null)
   const [, setTick] = useState(0) // re-render overlay (scale bar) after zoom
+  const overlayRef = useRef(overlay)
+  const onTapRef = useRef(onTapCell)
+  const onTerrainRef = useRef(onTerrain)
+  useEffect(() => {
+    overlayRef.current = overlay
+    onTapRef.current = onTapCell
+    onTerrainRef.current = onTerrain
+    draw()
+  })
 
   const draw = () => {
     const cv = canvasRef.current
@@ -82,6 +107,7 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { ter
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * tx, dpr * ty)
     ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(base, 0, 0)
+    overlayRef.current?.(ctx, scale)
   }
 
   /** Keep at least part of the map on screen and zoom within limits. */
@@ -107,6 +133,7 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { ter
         if (cancelled) return
         terrainRef.current = terrain
         baseRef.current = renderBase(terrain)
+        onTerrainRef.current?.(terrain)
         setMeta(meta)
       })
       .catch((e: unknown) => !cancelled && setError(String(e)))
@@ -200,6 +227,7 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { ter
         const gx = (p.x - v.tx) / v.scale / RENDER_SCALE - 0.5
         const gy = (p.y - v.ty) / v.scale / RENDER_SCALE - 0.5
         if (gx < 0 || gy < 0 || gx > t.width - 1 || gy > t.height - 1) { setProbe(null); return }
+        if (onTapRef.current) { onTapRef.current(Math.round(gx), Math.round(gy)); return }
         setProbe({ x: p.x, y: p.y, elev: elevAt(t, gx, gy), slope: slopeDeg(t, Math.round(gx), Math.round(gy)) })
       } else {
         setProbe(null)
@@ -263,8 +291,9 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { ter
         )}
         <p className="credit">Elevation: USGS 3DEP · contours {MINOR_CONTOUR_M} m</p>
       </div>
+      {panel}
       <nav className="actions map-actions">
-        <button className="btn" onClick={onBack}>{backLabel}</button>
+        {actions ?? <button className="btn" onClick={onBack}>{backLabel}</button>}
       </nav>
     </main>
   )

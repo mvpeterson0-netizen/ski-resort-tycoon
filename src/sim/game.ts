@@ -4,7 +4,8 @@
  */
 import { ECON, planPurchase, type PurchasePlan } from './economy'
 
-export const GAME_STATE_VERSION = 1
+// v2 (step 4c): added ownedParcels. Older saves are discarded (prototype, no migration).
+export const GAME_STATE_VERSION = 2
 
 export interface Loan {
   id: string
@@ -27,10 +28,12 @@ export interface GameState {
   phase: Phase
   cashUsd: number
   landPaidUsd: number
+  /** Parcel ids owned. Empty for sites without real terrain (whole site owned). */
+  ownedParcels: string[]
   loans: Loan[]
 }
 
-export function newGame(siteId: string, plan: PurchasePlan, seed: number): GameState {
+export function newGame(siteId: string, plan: PurchasePlan, seed: number, parcelId?: string): GameState {
   if (plan.problem) throw new Error(plan.problem)
   const loans: Loan[] = []
   if (plan.loanUsd > 0) {
@@ -52,6 +55,7 @@ export function newGame(siteId: string, plan: PurchasePlan, seed: number): GameS
     phase: 'offseason',
     cashUsd: plan.cashAfterUsd,
     landPaidUsd: plan.priceUsd,
+    ownedParcels: parcelId ? [parcelId] : [],
     loans,
   }
 }
@@ -64,7 +68,7 @@ export function parseSave(raw: unknown): GameState | null {
   if (!raw || typeof raw !== 'object') return null
   const g = raw as Partial<GameState>
   if (g.version !== GAME_STATE_VERSION) return null
-  if (typeof g.siteId !== 'string' || typeof g.cashUsd !== 'number' || !Array.isArray(g.loans)) return null
+  if (typeof g.siteId !== 'string' || typeof g.cashUsd !== 'number' || !Array.isArray(g.loans) || !Array.isArray(g.ownedParcels)) return null
   return g as GameState
 }
 

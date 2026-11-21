@@ -5,3 +5,4 @@ export const SIM_VERSION = 1
 export * from './terrain'
 export * from './economy'
 export * from './game'
+export * from './parcels'
