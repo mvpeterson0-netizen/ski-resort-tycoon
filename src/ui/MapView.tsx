@@ -58,7 +58,7 @@ function renderBase(t: Terrain): HTMLCanvasElement {
   return cv
 }
 
-export function MapView({ terrainId, onBack }: { terrainId: string; onBack: () => void }) {
+export function MapView({ terrainId, onBack, backLabel = 'Back to site' }: { terrainId: string; onBack: () => void; backLabel?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const baseRef = useRef<HTMLCanvasElement | null>(null)
   const terrainRef = useRef<Terrain | null>(null)
@@ -264,7 +264,7 @@ export function MapView({ terrainId, onBack }: { terrainId: string; onBack: () =
         <p className="credit">Elevation: USGS 3DEP · contours {MINOR_CONTOUR_M} m</p>
       </div>
       <nav className="actions map-actions">
-        <button className="btn" onClick={onBack}>Back to site</button>
+        <button className="btn" onClick={onBack}>{backLabel}</button>
       </nav>
     </main>
   )

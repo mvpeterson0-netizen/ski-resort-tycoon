@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { REGIONS, SIM_VERSION, aspectSnowRetention, sitesInRegion, type Region, type Site, type SiteTraits } from '../sim'
+import { REGIONS, SIM_VERSION, aspectSnowRetention, landPrice, regionById, sitesInRegion, type Region, type Site, type SiteTraits } from '../sim'
 import { MountainArt } from './MountainArt'
 import { drive, ft, usd } from './format'
 
@@ -14,7 +14,7 @@ function Frame({ title, children, bar }: { title?: string; children: ReactNode; 
   )
 }
 
-export function TitleScreen({ onNew }: { onNew: () => void }) {
+export function TitleScreen({ onNew, onContinue, canContinue }: { onNew: () => void; onContinue: () => void; canContinue: boolean }) {
   return (
     <main className="screen">
       <section className="hero">
@@ -28,8 +28,8 @@ export function TitleScreen({ onNew }: { onNew: () => void }) {
         </div>
       </section>
       <nav className="actions">
-        <button className="btn primary" onClick={onNew}>New game</button>
-        <button className="btn" disabled>Continue (no saves yet)</button>
+        {canContinue && <button className="btn primary" onClick={onContinue}>Continue</button>}
+        <button className={canContinue ? 'btn' : 'btn primary'} onClick={onNew}>New game</button>
       </nav>
       <p className="foot">Prototype · sim v{SIM_VERSION}</p>
     </main>
@@ -79,7 +79,7 @@ export function SitePicker({ region, onPick, onBack }: { region: Region; onPick:
                 <span><b>{ft(s.traits.verticalDropFt)}</b> vertical</span>
                 <span><b>{s.traits.avgSnowfallIn}"</b> snow/yr</span>
                 <span><b>{s.traits.aspect}</b> facing</span>
-                <span><b>{usd(s.traits.landPriceUsd)}</b> land</span>
+                <span><b>{usd(landPrice(s, regionById(s.regionId)!).totalUsd)}</b> asking</span>
               </span>
             </button>
           </li>
@@ -91,7 +91,9 @@ export function SitePicker({ region, onPick, onBack }: { region: Region; onPick:
 
 const RATING_CLASS = { poor: 'bad', fair: 'mid', good: 'good', easy: 'good', moderate: 'mid', hard: 'bad' } as const
 
-export function SiteDetail({ site, onBack, onMap }: { site: Site; onBack: () => void; onMap: () => void }) {
+export function SiteDetail({ site, region, onBack, onMap, onBuy }: {
+  site: Site; region: Region; onBack: () => void; onMap: () => void; onBuy: () => void
+}) {
   const t = site.traits
   const ret = aspectSnowRetention(t.aspect)
   const aspectHint = ret > 0.7 ? 'Holds snow well' : ret < 0.3 ? 'Sun melts snow fast' : 'Average sun exposure'
@@ -99,7 +101,7 @@ export function SiteDetail({ site, onBack, onMap }: { site: Site; onBack: () => 
     ['Vertical drop', ft(t.verticalDropFt), site.terrainId ? 'Max in parcel, from USGS data' : undefined],
     ['Slope aspect', `${t.aspect}-facing`, aspectHint, 'aspect'],
     ['Average snowfall', `${t.avgSnowfallIn} in / year`, undefined, 'avgSnowfallIn'],
-    ['Land price', usd(t.landPriceUsd), undefined, 'landPriceUsd'],
+    ['Asking price', usd(landPrice(site, region).totalUsd), `${t.acres.toLocaleString()} acres · breakdown on next screen`],
     ['To interstate', drive(t.driveToInterstateMin), undefined, 'driveToInterstateMin'],
     ['To nearest metro', drive(t.driveToMetroMin), t.nearestMetro, 'driveToMetroMin'],
     ['Water rights', <span key="w" className={`pill ${RATING_CLASS[t.waterRights]}`}>{t.waterRights}</span>, 'For snowmaking', 'waterRights'],
@@ -111,9 +113,11 @@ export function SiteDetail({ site, onBack, onMap }: { site: Site; onBack: () => 
       title={site.name}
       bar={
         <>
-          {site.terrainId && <button className="btn primary" onClick={onMap}>View terrain map</button>}
-          <button className="btn" disabled>Buy this land (step 4)</button>
-          <button className="btn" onClick={onBack}>Back to sites</button>
+          <div className="row">
+            <button className="btn" onClick={onBack}>Back</button>
+            {site.terrainId && <button className="btn" onClick={onMap}>Map</button>}
+          </div>
+          <button className="btn primary" onClick={onBuy}>Buy this land…</button>
         </>
       }
     >

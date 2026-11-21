@@ -3,3 +3,5 @@ export { createRng, type Rng } from './rng'
 export * from './sites'
 export const SIM_VERSION = 1
 export * from './terrain'
+export * from './economy'
+export * from './game'

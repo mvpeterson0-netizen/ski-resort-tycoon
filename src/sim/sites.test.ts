@@ -25,7 +25,7 @@ describe('site catalogue', () => {
   it('trait values are positive', () => {
     for (const s of SITES) {
       expect(s.traits.verticalDropFt).toBeGreaterThan(0)
-      expect(s.traits.landPriceUsd).toBeGreaterThan(0)
+      expect(s.traits.acres).toBeGreaterThan(0)
       expect(s.traits.avgSnowfallIn).toBeGreaterThan(0)
     }
   })

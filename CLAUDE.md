@@ -24,6 +24,13 @@ with a reduced off-season (building, hiring, financing, summer activities).
 - **Realism:** balanced — real economics underneath, readable and fun on top.
 - **Visual style:** "Trail Map" — cream paper background, serif type, navy accent,
   green/blue/black difficulty colours (chosen over dark and minimal options).
+- **Land ownership (step 4):** the player buys the whole parcel outright (no Forest
+  Service lease/permit model). Price = acres × regional base $/acre × bounded factors
+  (metro access, interstate access, vertical, snowfall, aspect, water rights,
+  permitting), all coefficients in `ECON` / `REGIONS` and all PLACEHOLDER.
+- **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
+  by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
+- **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`.
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -51,7 +58,7 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
   `Math.random()` — all randomness via the seeded `Rng` in `src/sim/rng.ts`. Unit-tested
   with Vitest (`*.test.ts` next to the code).
 - `src/ui/` holds React components. UI may import sim; sim never imports UI.
-- Saves in the browser (localStorage or IndexedDB — not yet decided).
+- Saves in the browser: localStorage, one slot (decided step 4).
 - GitHub Pages via Actions: `ci.yml` tests every push; `deploy.yml` publishes only on
   push to `main`. Vite `base` is `/ski-resort-tycoon/`.
 - Elevation data (decided step 3): **USGS 3DEP 1/3 arc-second DEM** GeoTIFFs from the
@@ -76,8 +83,8 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 ## Build order
 1. Scaffold, CLAUDE.md, CI, Pages deploy. (done)
 2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. (done)
-3. Map view with shaded relief for one real site; pan and pinch zoom. ← current: Berthoud Pass, CO
-4. Land purchase; starting cash and loan setup.
+3. Map view with shaded relief for one real site; pan and pinch zoom. (done: Berthoud Pass, CO)
+4. Land purchase; starting cash and loan setup. ← current (awaiting review)
 5. Build trails and one lift with placement and cost.
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary.
 7. Cash flow, loans, year-end report.
