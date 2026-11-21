@@ -77,8 +77,12 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
 }
 
 /** Resort home: the hub screen once the player owns land. Grows in later steps. */
-export function ResortHome({ game, onMap, onQuit }: { game: GameState; onMap: () => void; onQuit: () => void }) {
+export function ResortHome({ game, onMap, onBuild, onQuit }: {
+  game: GameState; onMap: () => void; onBuild: () => void; onQuit: () => void
+}) {
   const site = siteById(game.siteId)
+  const liftCap = game.lifts.reduce((s, l) => s + l.capacityPph, 0)
+  const count = (d: string) => game.trails.filter((t) => t.difficulty === d).length
   return (
     <main className="screen">
       <h2 className="screen-title">{site?.name ?? game.siteId}</h2>
@@ -90,11 +94,31 @@ export function ResortHome({ game, onMap, onQuit }: { game: GameState; onMap: ()
           <div><span>Debt payments / yr</span><b>{usd(annualDebtService(game))}</b></div>
           <div><span>Land paid</span><b>{usd(game.landPaidUsd)}</b></div>
         </div>
-        <p className="note">Next up (step 5): draw trails and place a lift on the map.</p>
+        <h3 className="group">Mountain</h3>
+        <dl className="traits">
+          <div className="trait">
+            <dt>Trails</dt>
+            <dd>
+              {game.trails.length}
+              {game.trails.length > 0 && (
+                <small>
+                  <i className="dot g" /> {count('green')} &nbsp;<i className="dot b" /> {count('blue')} &nbsp;<i className="dot k" /> {count('black')}
+                </small>
+              )}
+            </dd>
+          </div>
+          <div className="trait"><dt>Lifts</dt><dd>{game.lifts.length}{liftCap > 0 && <small>{liftCap.toLocaleString()} riders/hr</small>}</dd></div>
+        </dl>
+        {game.trails.length === 0 && game.lifts.length === 0 && (
+          <p className="note">Start by drawing a trail and placing a lift on your land.</p>
+        )}
       </div>
       <nav className="actions">
-        {site?.terrainId && <button className="btn primary" onClick={onMap}>Open mountain map</button>}
-        <button className="btn" onClick={onQuit}>Main menu</button>
+        {site?.terrainId && <button className="btn primary" onClick={onBuild}>Build on the mountain</button>}
+        <div className="row">
+          {site?.terrainId && <button className="btn" onClick={onMap}>Land</button>}
+          <button className="btn" onClick={onQuit}>Main menu</button>
+        </div>
       </nav>
     </main>
   )

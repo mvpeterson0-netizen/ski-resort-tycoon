@@ -33,10 +33,17 @@ with a reduced off-season (building, hiring, financing, summer activities).
   Parcel price = acres × regional base $/acre × bounded factors
   (metro access, interstate access, vertical, snowfall, aspect, water rights,
   permitting), all coefficients in `ECON` / `REGIONS` and all PLACEHOLDER.
+- **Building (step 5, `src/sim/build.ts`):** trails are drawn freehand (one finger draws,
+  two fingers pan/zoom), resampled every 20 m and auto-oriented downhill. Difficulty is
+  from the 90th-percentile slope along the line: green < 25% grade, blue 25–40%, black
+  > 40% (commonly quoted guidance, not an official standard); > 45° is unskiable. Lifts
+  are placed by tapping two stations (lower = bottom); types rope tow, fixed double,
+  fixed quad. Everything must lie on owned parcels. All costs/capacities/speeds are
+  PLACEHOLDER in `BUILD`. GameState v3 stores trails and lifts (v2 saves upgrade).
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v2; older versions are discarded, no migration while prototyping).
+  (v3; v2 upgrades automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -91,8 +98,7 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 2. Phone-first shell: region picker → site picker, 2–3 placeholder sites. (done)
 3. Map view with shaded relief for one real site; pan and pinch zoom. (done: Berthoud Pass, CO)
 4. Land purchase; starting cash and loan setup. (done)
-5. Build trails and one lift with placement and cost. ← next: freehand trail drawing
-   (difficulty from slope along the line), tap bottom/top for lifts, within owned parcels.
+5. Build trails and one lift with placement and cost. ← current (awaiting review)
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary.
 7. Cash flow, loans, year-end report.
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.

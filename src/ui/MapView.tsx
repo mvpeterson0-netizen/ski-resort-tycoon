@@ -72,9 +72,16 @@ export interface MapViewProps {
   panel?: ReactNode
   /** Replaces the default Back button. */
   actions?: ReactNode
+  /** Drawing mode: one finger draws a stroke (cells), two fingers still pan/zoom. */
+  drawing?: boolean
+  onStrokeMove?: (pts: [number, number][]) => void
+  onStrokeEnd?: (pts: [number, number][]) => void
 }
 
-export function MapView({ terrainId, onBack, backLabel = 'Back to site', overlay, onTapCell, onTerrain, panel, actions }: MapViewProps) {
+export function MapView({
+  terrainId, onBack, backLabel = 'Back to site', overlay, onTapCell, onTerrain, panel, actions,
+  drawing, onStrokeMove, onStrokeEnd,
+}: MapViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const baseRef = useRef<HTMLCanvasElement | null>(null)
   const terrainRef = useRef<Terrain | null>(null)
@@ -87,10 +94,12 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site', overlay
   const overlayRef = useRef(overlay)
   const onTapRef = useRef(onTapCell)
   const onTerrainRef = useRef(onTerrain)
+  const drawRef = useRef({ drawing, onStrokeMove, onStrokeEnd })
   useEffect(() => {
     overlayRef.current = overlay
     onTapRef.current = onTapCell
     onTerrainRef.current = onTerrain
+    drawRef.current = { drawing, onStrokeMove, onStrokeEnd }
     draw()
   })
 
@@ -192,15 +201,35 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site', overlay
       v.tx = cx - (cx - v.tx) * k
       v.ty = cy - (cy - v.ty) * k
     }
+    const toCell = (p: { x: number; y: number }): [number, number] => {
+      const v = viewRef.current
+      const t = terrainRef.current!
+      const gx = (p.x - v.tx) / v.scale / RENDER_SCALE - 0.5
+      const gy = (p.y - v.ty) / v.scale / RENDER_SCALE - 0.5
+      return [Math.min(Math.max(gx, 0), t.width - 1), Math.min(Math.max(gy, 0), t.height - 1)]
+    }
+    let stroke: [number, number][] | null = null
     const down = (e: PointerEvent) => {
       cv.setPointerCapture(e.pointerId)
       pointers.set(e.pointerId, local(e))
       if (pointers.size === 1) moved = 0
       last = summary()
+      if (drawRef.current.drawing && pointers.size === 1) {
+        stroke = [toCell(local(e))]
+      } else if (stroke) {
+        stroke = null // second finger: switch to pan/zoom
+        drawRef.current.onStrokeMove?.([])
+      }
     }
     const move = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId) || !last) return
       pointers.set(e.pointerId, local(e))
+      if (stroke) {
+        stroke.push(toCell(local(e)))
+        drawRef.current.onStrokeMove?.(stroke.slice())
+        last = summary()
+        return
+      }
       const now = summary()
       const v = viewRef.current
       moved += Math.hypot(now.cx - last.cx, now.cy - last.cy)
@@ -219,6 +248,12 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site', overlay
       const p = local(e)
       pointers.delete(e.pointerId)
       last = pointers.size ? summary() : null
+      if (stroke) {
+        const done = stroke
+        stroke = null
+        drawRef.current.onStrokeEnd?.(done)
+        return
+      }
       setTick((n) => n + 1)
       if (pointers.size === 0 && moved < 8) {
         // Tap: read elevation and slope at that point.
@@ -274,7 +309,7 @@ export function MapView({ terrainId, onBack, backLabel = 'Back to site', overlay
         )}
       </header>
       <div className="map-wrap">
-        <canvas ref={canvasRef} className="map-canvas" />
+        <canvas ref={canvasRef} className={drawing ? 'map-canvas drawing' : 'map-canvas'} />
         {error && <p className="note map-error">Could not load terrain: {error}</p>}
         {probe && (
           <div className="probe" style={{ left: probe.x, top: probe.y }}>

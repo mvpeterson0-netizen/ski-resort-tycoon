@@ -118,3 +118,20 @@ h1 { font-size: 2rem; margin: 8px 0 0; letter-spacing: -0.01em; }
   background: var(--accent); color: var(--accent-ink); vertical-align: middle; }
 .tag.muted { background: var(--line); color: var(--ink); }
 .map-panel .hint { margin-bottom: 4px; }
+
+/* Step 5: build mode */
+.map-canvas.drawing { cursor: crosshair; }
+.build-panel { min-height: 120px; }
+.seg { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.seg button { font: inherit; font-weight: 600; min-height: 40px; padding: 0 18px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.seg button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.seg .cash { margin-left: auto; font-size: 0.85rem; color: var(--muted); }
+.chips { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.chip { font: inherit; font-size: 0.85rem; white-space: nowrap; min-height: 36px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.chip.on { border-color: #5b2a86; color: #5b2a86; font-weight: 700; background: #f3ecf8; }
+.diff { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.warn { color: #b03a2e; margin: 6px 0 0; font-size: 0.9rem; font-weight: 600; }
+.ok { color: var(--green); margin: 6px 0 0; font-size: 0.9rem; font-weight: 600; }
+.trait dd small .dot { width: 9px; height: 9px; }

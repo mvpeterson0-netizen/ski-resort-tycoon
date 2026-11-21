@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { newGame, regionById, siteById, type GameState, type Parcel, type Region, type Site } from './sim'
+import { BuildScreen } from './ui/Build'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
 import { PurchaseScreen, ResortHome } from './ui/Purchase'
@@ -16,6 +17,7 @@ type Nav =
   | { screen: 'buy'; region: Region; site: Site; parcel?: Parcel }
   | { screen: 'home' }
   | { screen: 'resortMap' }
+  | { screen: 'build' }
 
 export default function App() {
   const [nav, setNav] = useState<Nav>({ screen: 'title' })
@@ -92,7 +94,17 @@ export default function App() {
         <ResortHome
           game={game}
           onMap={() => setNav({ screen: 'resortMap' })}
+          onBuild={() => setNav({ screen: 'build' })}
           onQuit={() => setNav({ screen: 'title' })}
+        />
+      )
+    case 'build':
+      if (!game) return null
+      return (
+        <BuildScreen
+          game={game}
+          onChange={(g) => { saveGame(g); setGame(g) }}
+          onBack={() => setNav({ screen: 'home' })}
         />
       )
     case 'resortMap': {
