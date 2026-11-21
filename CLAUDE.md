@@ -40,6 +40,12 @@ with a reduced off-season (building, hiring, financing, summer activities).
   are placed by tapping two stations (lower = bottom); types rope tow, fixed double,
   fixed quad. Everything must lie on owned parcels. All costs/capacities/speeds are
   PLACEHOLDER in `BUILD`. GameState v3 stores trails and lifts (v2 saves upgrade).
+- **Run-difficulty overlay (owner request, step 5):** difficulty stays strict (black
+  terrain makes black trails; no softening). Instead, site assessment shows each 10 m
+  cell coloured by the class its slope would give (green/blue/black/hazard, light =
+  gentle end of class, deep = steep end) on the selected parcel, plus a per-parcel mix
+  bar. Same thresholds as trail grading (`src/sim/difficulty.ts`). Also a "Runs" toggle
+  in build mode, on owned land.
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`

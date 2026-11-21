@@ -6,10 +6,10 @@
  * guidance (green < ~25% grade, blue 25–40%, black > 40%) but are not an official
  * standard; treat them as tunable.
  */
+import { SLOPE, difficultyFor, pctToDeg, type Difficulty } from './difficulty'
 import { parcelAtCell, type Parcel } from './parcels'
 import { elevAt, slopeDeg, type Terrain } from './terrain'
 
-export type Difficulty = 'green' | 'blue' | 'black'
 export type LiftType = 'ropeTow' | 'fixedDouble' | 'fixedQuad'
 export type Pt = [number, number] // terrain cell coordinates
 
@@ -19,11 +19,8 @@ export const BUILD = {
     widthM: 40,
     /** PLACEHOLDER: clearing + grading cost per acre of trail. */
     costPerAcreUsd: 25_000,
-    /** Slope grade (%) thresholds, measured on the 90th-percentile steepest point. */
-    blueFromPct: 25,
-    blackFromPct: 40,
-    /** Too steep to groom or ski safely in this model. PLACEHOLDER. */
-    maxPct: 100,
+    // Difficulty thresholds live in difficulty.ts (SLOPE), measured on the
+    // 90th-percentile steepest point of the line.
     minLengthM: 150,
     /** Resample spacing along the drawn line. */
     stepM: 20,
@@ -66,13 +63,7 @@ export interface LiftPlan {
   problems: string[]
 }
 
-export const pctToDeg = (pct: number) => (Math.atan(pct / 100) * 180) / Math.PI
-
-export function difficultyFor(slopeDeg: number): Difficulty {
-  if (slopeDeg >= pctToDeg(BUILD.trail.blackFromPct)) return 'black'
-  if (slopeDeg >= pctToDeg(BUILD.trail.blueFromPct)) return 'blue'
-  return 'green'
-}
+export { difficultyFor, pctToDeg, type Difficulty }
 
 /** Resample a polyline at a fixed spacing (in cells). */
 export function resample(pts: Pt[], step: number): Pt[] {
@@ -135,7 +126,7 @@ export function planTrail(t: Terrain, raw: Pt[], parcels: Parcel[], owned: strin
     problems: [],
   }
   if (lengthM < cfg.minLengthM) plan.problems.push(`Too short (min ${cfg.minLengthM} m)`)
-  if (plan.maxSlopeDeg > pctToDeg(cfg.maxPct)) plan.problems.push('Crosses terrain too steep to ski (over 45°)')
+  if (plan.maxSlopeDeg > SLOPE.hazardFromDeg) plan.problems.push(`Crosses terrain too steep to ski (over ${SLOPE.hazardFromDeg}°)`)
   if (!allOwned(pts, parcels, owned)) plan.problems.push('Leaves land you own')
   return plan
 }

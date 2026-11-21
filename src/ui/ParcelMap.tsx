@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import {
   buyableParcels, computeParcels, landPrice, parcelAtCell, parcelLabel, siteForParcel,
-  type Parcel, type Region, type Site,
+  type Parcel, type Region, type Site, type SlopeClass,
 } from '../sim'
+import { CLASS_LABEL, CLASS_RGB, renderDifficultyLayer } from './difficultyLayer'
 import { MapView, RENDER_SCALE } from './MapView'
 import { ft, usd } from './format'
 
@@ -35,11 +36,32 @@ function drawParcels(
   ctx.setLineDash([])
 }
 
+const ORDER: SlopeClass[] = ['green', 'blue', 'black', 'hazard']
+const rgb = (c: SlopeClass) => `rgb(${CLASS_RGB[c].join(',')})`
+
+/** Stacked bar of the parcel's potential run mix, with a legend. */
+function MixBar({ mix }: { mix: Record<SlopeClass, number> }) {
+  return (
+    <div className="mix">
+      <div className="mix-bar" role="img" aria-label={ORDER.map((c) => `${CLASS_LABEL[c]} ${Math.round(mix[c] * 100)}%`).join(', ')}>
+        {ORDER.map((c) => mix[c] > 0 && <i key={c} style={{ width: `${mix[c] * 100}%`, background: rgb(c) }} />)}
+      </div>
+      <div className="mix-legend">
+        {ORDER.map((c) => (
+          <span key={c}><i style={{ background: rgb(c) }} />{CLASS_LABEL[c]} {Math.round(mix[c] * 100)}%</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Show the parcel grid; the starter is always the site's road-access parcel. */
 export function ParcelPicker({ site, region, onBack, onChoose }: {
   site: Site; region: Region; onBack: () => void; onChoose: (p: Parcel) => void
 }) {
   const [parcels, setParcels] = useState<Parcel[]>([])
+  const [layer, setLayer] = useState<HTMLCanvasElement | null>(null)
+  const [showRuns, setShowRuns] = useState(true)
   const [focusId, setFocusId] = useState<string | null>(null)
   const price = (p: Parcel) => landPrice(siteForParcel(site, p), region).totalUsd
   const starter = parcels.find((p) => p.id === site.accessParcel)
@@ -50,21 +72,32 @@ export function ParcelPicker({ site, region, onBack, onChoose }: {
     <MapView
       terrainId={site.terrainId!}
       onBack={onBack}
-      onTerrain={(t) => setParcels(computeParcels(t))}
+      onTerrain={(t) => { setParcels(computeParcels(t)); setLayer(renderDifficultyLayer(t)) }}
       onTapCell={(x, y) => setFocusId(parcelAtCell(parcels, x, y)?.id ?? null)}
-      overlay={(ctx, scale) =>
-        drawParcels(ctx, scale, parcels, (p) =>
-          p.id === starter?.id
+      overlay={(ctx, scale) => {
+        const runs = showRuns && layer && focus
+        drawParcels(ctx, scale, parcels, (p) => {
+          if (runs && p.id === focus.id) return { stroke: 'transparent', width: 0 }
+          return p.id === starter?.id
             ? { fill: 'rgba(29,78,137,0.18)', stroke: '#1d4e89', width: 3, label: `Road access · ${usd(price(p))}` }
-            : {
-                fill: 'rgba(60,50,40,0.22)',
-                stroke: p.id === focus?.id ? '#23303b' : 'rgba(35,48,59,0.6)',
-                width: p.id === focus?.id ? 2.5 : 1,
-                dash: [6, 4],
-                label: 'Expansion',
-              },
-        )
-      }
+            : { fill: 'rgba(60,50,40,0.22)', stroke: 'rgba(35,48,59,0.6)', width: 1, dash: [6, 4], label: 'Expansion' }
+        })
+        if (runs) {
+          // Run-difficulty overlay, clipped to the selected parcel, one pixel per 10 m cell.
+          const x = focus.x0 * S, y = focus.y0 * S, w = (focus.x1 - focus.x0) * S, h = (focus.y1 - focus.y0) * S
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(x, y, w, h)
+          ctx.clip()
+          ctx.imageSmoothingEnabled = false
+          ctx.drawImage(layer, 0, 0, layer.width * S, layer.height * S)
+          ctx.restore()
+          ctx.imageSmoothingEnabled = true
+          ctx.strokeStyle = focus.id === starter?.id ? '#1d4e89' : '#23303b'
+          ctx.lineWidth = 3 / scale
+          ctx.strokeRect(x, y, w, h)
+        }
+      }}
       panel={
         <section className="map-panel">
           {focus && (
@@ -74,6 +107,7 @@ export function ParcelPicker({ site, region, onBack, onChoose }: {
                 {isStarter ? <span className="tag">Starter</span> : <span className="tag muted">Expansion, buy later</span>}
               </h3>
               {isStarter && site.accessRoad && <p className="hint">{site.accessRoad}. Your base area and parking go here.</p>}
+              <MixBar mix={focus.terrainMix} />
               <div className="mini-stats">
                 <span><b>{focus.acres}</b> acres</span>
                 <span><b>{ft(focus.verticalFt)}</b> vertical</span>
@@ -88,7 +122,10 @@ export function ParcelPicker({ site, region, onBack, onChoose }: {
       actions={
         <div className="row">
           <button className="btn" onClick={onBack}>Back</button>
-          <button className="btn primary" disabled={!starter} onClick={() => starter && onChoose(starter)}>
+          <button className={showRuns ? 'btn toggle on' : 'btn toggle'} aria-pressed={showRuns} onClick={() => setShowRuns((v) => !v)}>
+            Runs
+          </button>
+          <button className="btn primary grow" disabled={!starter} onClick={() => starter && onChoose(starter)}>
             Buy starter parcel…
           </button>
         </div>

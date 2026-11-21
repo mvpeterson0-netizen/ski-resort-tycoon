@@ -4,6 +4,7 @@ import {
   type Difficulty, type GameState, type LiftPlan, type LiftType, type Parcel, type Pt, type Terrain, type TrailPlan,
 } from '../sim'
 import { MapView, RENDER_SCALE } from './MapView'
+import { renderDifficultyLayer } from './difficultyLayer'
 import { usd } from './format'
 
 const S = RENDER_SCALE
@@ -70,6 +71,8 @@ export function BuildScreen({ game, onChange, onBack }: {
   const [stations, setStations] = useState<Pt[]>([])
   const [liftType, setLiftType] = useState<LiftType>('fixedDouble')
   const [message, setMessage] = useState<string | null>(null)
+  const [layer, setLayer] = useState<HTMLCanvasElement | null>(null)
+  const [showRuns, setShowRuns] = useState(false)
 
   const lift: LiftPlan | null =
     terrain && stations.length === 2 ? planLift(terrain, liftType, stations[0], stations[1], parcels, game.ownedParcels) : null
@@ -94,7 +97,7 @@ export function BuildScreen({ game, onChange, onBack }: {
       terrainId={site.terrainId!}
       onBack={onBack}
       drawing={mode === 'trail'} // a new stroke replaces any pending trail
-      onTerrain={(t) => { setTerrain(t); setParcels(computeParcels(t)) }}
+      onTerrain={(t) => { setTerrain(t); setParcels(computeParcels(t)); setLayer(renderDifficultyLayer(t)) }}
       onStrokeMove={(pts) => setStroke(pts)}
       onStrokeEnd={(pts) => {
         setStroke([])
@@ -111,7 +114,18 @@ export function BuildScreen({ game, onChange, onBack }: {
         // Dim land the player does not own.
         ctx.fillStyle = 'rgba(60,50,40,0.32)'
         for (const p of parcels) {
-          if (!game.ownedParcels.includes(p.id)) ctx.fillRect(p.x0 * S, p.y0 * S, (p.x1 - p.x0) * S, (p.y1 - p.y0) * S)
+          const r: [number, number, number, number] = [p.x0 * S, p.y0 * S, (p.x1 - p.x0) * S, (p.y1 - p.y0) * S]
+          if (!game.ownedParcels.includes(p.id)) { ctx.fillRect(...r); continue }
+          if (showRuns && layer) {
+            // Slope-based run difficulty on owned land, to help place trails.
+            ctx.save()
+            ctx.beginPath()
+            ctx.rect(...r)
+            ctx.clip()
+            ctx.imageSmoothingEnabled = false
+            ctx.drawImage(layer, 0, 0, layer.width * S, layer.height * S)
+            ctx.restore()
+          }
         }
         for (const t of game.trails) drawTrail(ctx, scale, t.points, DIFF_COLOR[t.difficulty])
         for (const l of game.lifts) drawLift(ctx, scale, l.bottom, l.top)
@@ -124,6 +138,7 @@ export function BuildScreen({ game, onChange, onBack }: {
           <div className="seg" role="tablist">
             <button role="tab" aria-selected={mode === 'trail'} className={mode === 'trail' ? 'on' : ''} onClick={() => switchMode('trail')}>Trail</button>
             <button role="tab" aria-selected={mode === 'lift'} className={mode === 'lift' ? 'on' : ''} onClick={() => switchMode('lift')}>Lift</button>
+            <button aria-pressed={showRuns} className={showRuns ? 'tgl on' : 'tgl'} onClick={() => setShowRuns((v) => !v)}>{showRuns ? '✓ ' : ''}Runs</button>
             <span className="cash">Cash {usd(game.cashUsd)}</span>
           </div>
 

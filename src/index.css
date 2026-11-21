@@ -135,3 +135,16 @@ h1 { font-size: 2rem; margin: 8px 0 0; letter-spacing: -0.01em; }
 .warn { color: #b03a2e; margin: 6px 0 0; font-size: 0.9rem; font-weight: 600; }
 .ok { color: var(--green); margin: 6px 0 0; font-size: 0.9rem; font-weight: 600; }
 .trait dd small .dot { width: 9px; height: 9px; }
+
+/* Parcel run-difficulty overlay */
+.mix { margin: 2px 0 6px; }
+.mix-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.mix-bar i { display: block; height: 100%; }
+.mix-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+.mix-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.mix-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.btn.toggle { flex: 0 0 auto; padding: 0 14px; }
+.btn.toggle.on { border-color: var(--accent); color: var(--accent); }
+.row .btn.grow { flex: 1.6; }
+/* On/off toggle in the build bar: outlined, so it doesn't read as a third mode tab. */
+.seg button.tgl.on { background: var(--surface); color: var(--accent); border: 2px solid var(--accent); }

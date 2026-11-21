@@ -4,6 +4,7 @@
  * are derived from the real elevation data; other traits come from the site.
  */
 import type { Aspect, Site, SiteTraits } from './sites'
+import { slopeClass, type SlopeClass } from './difficulty'
 import { gradient, type Terrain } from './terrain'
 
 export const PARCEL_GRID = 3
@@ -26,6 +27,8 @@ export interface Parcel {
   /** Share of cells (0-1) whose downslope faces N, NE or NW. */
   northShare: number
   meanSlopeDeg: number
+  /** Share of cells (0-1) in each slope class: the parcel's potential run mix. */
+  terrainMix: Record<SlopeClass, number>
 }
 
 const ASPECTS: Aspect[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
@@ -54,6 +57,7 @@ export function computeParcels(t: Terrain, n = PARCEL_GRID): Parcel[] {
     for (let col = 0; col < n; col++) {
       const x0 = edgesX[col], x1 = edgesX[col + 1], y0 = edgesY[row], y1 = edgesY[row + 1]
       let min = Infinity, max = -Infinity, sumE = 0, sumN = 0, north = 0, slopeSum = 0, cells = 0
+      const mix: Record<SlopeClass, number> = { green: 0, blue: 0, black: 0, hazard: 0 }
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
           const e = t.elev[y * t.width + x]
@@ -65,7 +69,9 @@ export function computeParcels(t: Terrain, n = PARCEL_GRID): Parcel[] {
           const dn = gyS
           sumE += de
           sumN += dn
-          slopeSum += (Math.atan(Math.hypot(gx, gyS)) * 180) / Math.PI
+          const deg = (Math.atan(Math.hypot(gx, gyS)) * 180) / Math.PI
+          slopeSum += deg
+          mix[slopeClass(deg)]++
           const a = aspectFromDeg((Math.atan2(de, dn) * 180) / Math.PI)
           if (a === 'N' || a === 'NE' || a === 'NW') north++
           cells++
@@ -78,6 +84,7 @@ export function computeParcels(t: Terrain, n = PARCEL_GRID): Parcel[] {
         aspect: aspectFromDeg((Math.atan2(sumE, sumN) * 180) / Math.PI),
         northShare: north / cells,
         meanSlopeDeg: slopeSum / cells,
+        terrainMix: { green: mix.green / cells, blue: mix.blue / cells, black: mix.black / cells, hazard: mix.hazard / cells },
       })
     }
   }
