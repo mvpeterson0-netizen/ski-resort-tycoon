@@ -15,6 +15,7 @@
  */
 import { NEUTRAL_EFFECTS, type AmenityEffects } from './amenities'
 import type { LiftType } from './build'
+import { NO_SNOWMAKING, SNOWMAKING, effectiveBase, type SnowmakingEffects } from './snowmaking'
 import { FULL_STAFF, STAFF_TUNING, type StaffEffects } from './staff'
 import { financeModifiers, snowModifiers } from './difficultySettings'
 import { createRng } from './rng'
@@ -123,6 +124,8 @@ export interface SeasonInputs {
   reputation?: number
   /** Staffing; omitted = fully staffed with no payroll (used by older tests). */
   staff?: StaffEffects
+  /** Snowmaking; omitted = none. */
+  snowmaking?: SnowmakingEffects
 }
 
 export interface DayResult {
@@ -156,6 +159,8 @@ export interface DayResult {
   netUsd: number
   /** Reputation after this day. */
   reputation: number
+  /** Snowmaking ran today. */
+  snowmaking: boolean
 }
 
 export interface SeasonState {
@@ -285,7 +290,9 @@ export function startSeason(
   const factor = lerp(lo, hi, rng.next())
   // A poor year opens late; the worst year in range opens maxOpeningDelayDays late.
   const shortfall = clamp((W.goodYearFactor - factor) / (W.goodYearFactor - lo), 0, 1)
-  const openingDay = Math.round(shortfall * mod.maxOpeningDelayDays + rng.next() * W.openingJitterDays)
+  const snow = inp.snowmaking ?? NO_SNOWMAKING
+  const delay = shortfall * mod.maxOpeningDelayDays * (1 - SNOWMAKING.openingDelayCut * snow.coverage)
+  const openingDay = Math.round(delay + rng.next() * W.openingJitterDays)
   const pass = estimatePassSales(gameYear, inp, passPriceUsd, ticketPriceUsd)
   return {
     year: gameYear,
@@ -342,9 +349,13 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const open = reachedOpening && !stormClosed && inp.lifts.length > 0 && inp.trailCount > 0
   const recentSnow = newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0)
   const staff = inp.staff ?? FULL_STAFF
+  const snowSys = inp.snowmaking ?? NO_SNOWMAKING
+  // The system runs before opening, for two weeks after, and whenever the base is thin.
+  const snowmakingRuns = snowSys.coverage > 0 && !warm
+    && (s.day < s.openingDay + SNOWMAKING.runDaysAfterOpening || baseIn < SNOWMAKING.madeBaseIn)
   // Groomer shortages make the snow worse.
   const conditions = Math.max(SEASON.conditions.min,
-    Math.round((conditionsScore(baseIn, recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)) * 100) / 100)
+    Math.round((conditionsScore(effectiveBase(baseIn, snowSys.coverage), recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)) * 100) / 100)
 
   // Demand: locals (some hold passes) and visitors.
   const holiday = isHoliday(date)
@@ -380,7 +391,7 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const costUsd = Math.round(finMod.costs * (open
     ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
       + guests * M.variableCostPerGuestUsd + amen.dailyCostUsd
-    : M.overheadClosedUsd) + staff.payrollUsd)
+    : M.overheadClosedUsd) + staff.payrollUsd + (snowmakingRuns ? snowSys.runCostUsd : 0))
 
   // Reputation drifts toward the day's guest experience (conditions, lines, variety).
   const R = SEASON.reputation
@@ -402,6 +413,7 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
     ticketRevenueUsd, foodRevenueUsd, extrasRevenueUsd, costUsd,
     netUsd: ticketRevenueUsd + foodRevenueUsd + extrasRevenueUsd - costUsd,
     reputation: Math.round(reputation * 1000) / 1000,
+    snowmaking: snowmakingRuns,
   }
   return {
     season: { ...s, day: s.day + 1, baseIn, reputation, rngState: rng.state(), days: [...s.days, result] },

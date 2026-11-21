@@ -8,7 +8,8 @@ import { AMENITIES, nextAmenityCost, type AmenityId } from './amenities'
 import { BUILD, type LiftType } from './build'
 import type { DifficultySettings } from './difficultySettings'
 import { planPurchase } from './economy'
-import { advanceDay, beginSeason, buyAmenity, newGame, staffing, type GameState, type Lift, type Trail } from './game'
+import { advanceDay, beginSeason, buyAmenity, buySnowmaking, newGame, staffing, type GameState, type Lift, type Trail } from './game'
+import { SNOWMAKING, maxSnowmakingKm } from './snowmaking'
 import { FIN, assetValue, fixedCosts, loanDebt, takeTermLoan, termLoanLimit } from './finance'
 import type { Site } from './sites'
 
@@ -122,6 +123,10 @@ function reinvest(g: GameState, o: Opts, landQueue: number[]): GameState {
       crowded && liftRoom && lift,
       kmRoom && { cost: trailCostUsd(TRAIL_M), apply: addTrail },
       g.amenities.lodge === 0 && amenity('lodge'),
+      // Snowmaking on up to half the trails (within water rights), 1 km at a time.
+      g.snowmakingKm + 1 <= Math.min(km * 0.5, maxSnowmakingKm(km, o.site.traits.waterRights)) && {
+        cost: SNOWMAKING.installPerKmUsd, apply: (x: GameState) => { const r = buySnowmaking(x, o.site, 1); return r.ok ? r.game : x },
+      },
       g.amenities.rentals === 0 && amenity('rentals'),
       g.amenities.school === 0 && amenity('school'),
       !lodgeMax && g.lifts.length >= 4 && amenity('lodge'),

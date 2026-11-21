@@ -6,8 +6,8 @@
  */
 import type { LiftType } from './build'
 
-export type Role = 'liftOps' | 'patrol' | 'groomers' | 'mechanics' | 'instructors'
-export const ROLES: Role[] = ['liftOps', 'patrol', 'groomers', 'mechanics', 'instructors']
+export type Role = 'liftOps' | 'patrol' | 'groomers' | 'mechanics' | 'instructors' | 'snowmakers'
+export const ROLES: Role[] = ['liftOps', 'patrol', 'groomers', 'mechanics', 'instructors', 'snowmakers']
 
 export interface RoleSpec {
   name: string
@@ -22,6 +22,7 @@ export const ROLE_SPECS: Record<Role, RoleSpec> = {
   groomers: { name: 'Groomers', wageUsd: 220, shortage: 'Rougher snow: worse conditions' },
   mechanics: { name: 'Mechanics', wageUsd: 260, shortage: 'Lifts run slower' },
   instructors: { name: 'Instructors', wageUsd: 190, shortage: 'Fewer lessons sold' },
+  snowmakers: { name: 'Snowmakers', wageUsd: 210, shortage: 'Less terrain covered by made snow' },
 }
 
 export const STAFF_TUNING = {
@@ -30,6 +31,7 @@ export const STAFF_TUNING = {
   groomersBase: 2, groomersPerKm: 0.25,
   mechanicsBase: 2, mechanicsPerLift: 0.5,
   instructorsWithSchool: 10,
+  snowmakersBase: 2, snowmakersPerKm: 0.5,
   /** Local workers available at the reference metro access, before housing. */
   localPoolBase: 60,
   /** Each 10% of wage above standard draws this much more from the local pool. */
@@ -41,12 +43,14 @@ export const STAFF_TUNING = {
 } as const
 
 export type Staffing = Record<Role, number>
-export const NO_STAFF: Staffing = { liftOps: 0, patrol: 0, groomers: 0, mechanics: 0, instructors: 0 }
+export const NO_STAFF: Staffing = { liftOps: 0, patrol: 0, groomers: 0, mechanics: 0, instructors: 0, snowmakers: 0 }
 
 export interface StaffNeedInputs {
   lifts: { type: LiftType }[]
   trailKm: number
   hasSchool: boolean
+  /** Km of trail with snowmaking. */
+  snowmakingKm?: number
 }
 
 /** Recommended headcount for the resort as built. */
@@ -59,10 +63,11 @@ export function neededStaff(i: StaffNeedInputs): Staffing {
     groomers: Math.ceil(T.groomersBase + T.groomersPerKm * i.trailKm),
     mechanics: Math.ceil(T.mechanicsBase + T.mechanicsPerLift * i.lifts.length),
     instructors: i.hasSchool ? T.instructorsWithSchool : 0,
+    snowmakers: (i.snowmakingKm ?? 0) > 0 ? Math.ceil(T.snowmakersBase + T.snowmakersPerKm * (i.snowmakingKm ?? 0)) : 0,
   }
 }
 
-export const headcount = (s: Staffing) => ROLES.reduce((n, r) => n + s[r], 0)
+export const headcount = (s: Staffing) => ROLES.reduce((n, r) => n + (s[r] ?? 0), 0)
 
 /** Local labour pool from metro access (closer to a city = more applicants). */
 export function localPool(driveToMetroMin: number): number {
@@ -89,15 +94,15 @@ export interface StaffEffects {
 }
 
 export const FULL_STAFF: StaffEffects = {
-  ratios: { liftOps: 1, patrol: 1, groomers: 1, mechanics: 1, instructors: 1 }, payrollUsd: 0, fill: 1,
+  ratios: { liftOps: 1, patrol: 1, groomers: 1, mechanics: 1, instructors: 1, snowmakers: 1 }, payrollUsd: 0, fill: 1,
 }
 
 export function staffEffects(hired: Staffing, needed: Staffing, fill: number, wageLevel: number): StaffEffects {
   const ratios = { ...NO_STAFF }
   let payroll = 0
   for (const r of ROLES) {
-    const filled = hired[r] * fill
-    ratios[r] = needed[r] > 0 ? Math.min(1, filled / needed[r]) : 1
+    const filled = (hired[r] ?? 0) * fill
+    ratios[r] = (needed[r] ?? 0) > 0 ? Math.min(1, filled / needed[r]) : 1
     payroll += filled * ROLE_SPECS[r].wageUsd * wageLevel
   }
   return { ratios, payrollUsd: Math.round(payroll), fill }

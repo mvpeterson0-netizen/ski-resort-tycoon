@@ -6,6 +6,7 @@
  * operating profit minus fixed costs and interest.
  */
 import { amenityBookValue, amenityUpkeep } from './amenities'
+import { snowmakingBookValue, snowmakingUpkeep } from './snowmaking'
 import type { GameState, Loan } from './game'
 
 export const FIN = {
@@ -69,7 +70,7 @@ export interface YearReport {
 /** Book value: land plus construction at cost (no depreciation yet). */
 export function assetValue(g: GameState): number {
   return g.landPaidUsd + g.trails.reduce((s, t) => s + t.costUsd, 0) + g.lifts.reduce((s, l) => s + l.costUsd, 0)
-    + amenityBookValue(g.amenities ?? { parking: 0, lodge: 0, rentals: 0, school: 0 })
+    + amenityBookValue(g.amenities ?? { parking: 0, lodge: 0, rentals: 0, school: 0 }) + snowmakingBookValue(g.snowmakingKm ?? 0)
 }
 
 export const loanDebt = (g: GameState) => g.loans.reduce((s, l) => s + l.balanceUsd, 0)
@@ -87,7 +88,7 @@ export function termLoanLimit(g: GameState): number {
 
 export function fixedCosts(g: GameState): number {
   return FIN.fixed.baseUsd + g.lifts.length * FIN.fixed.perLiftUsd + g.trails.length * FIN.fixed.perTrailUsd
-    + amenityUpkeep(g.amenities ?? { parking: 0, lodge: 0, rentals: 0, school: 0 })
+    + amenityUpkeep(g.amenities ?? { parking: 0, lodge: 0, rentals: 0, school: 0 }) + snowmakingUpkeep(g.snowmakingKm ?? 0)
 }
 
 function annualPayment(principal: number, ratePct: number, years: number): number {

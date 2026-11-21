@@ -82,6 +82,13 @@ with a reduced off-season (building, hiring, financing, summer activities).
   lift ops → lift capacity, mechanics → lift speed, patrol → open terrain (appeal),
   groomers → conditions, instructors → lesson revenue. Payroll is paid every season
   day; flat overhead reduced accordingly. All PLACEHOLDER. GameState v9.
+- **Snowmaking (`src/sim/snowmaking.ts`):** bought in 1 km steps on the Base Area screen,
+  capped by water rights (poor 25% / fair 60% / good 100% of trail km). Full coverage cuts
+  a poor year's opening delay by 85%; covered terrain is held at a 40" made base, which
+  lifts the conditions score in thin years. Costs: install per km, running cost on days
+  it runs (pre-season, 2 weeks after opening, whenever base < 40"; poor water pricier),
+  3% yearly upkeep, and a snowmaker crew (new staff role; shortages cut coverage). All
+  PLACEHOLDER. GameState v10.
 - **Financing kept minor (owner request):** land mortgage 6%/25 yr, term loans 6.5%/15 yr,
   credit line 8%, so pricing, lifts and amenities decide outcomes, not interest.
 - **Difficulty sliders (owner request):** Settings screen (title + resort home) with
@@ -103,15 +110,16 @@ with a reduced off-season (building, hiring, financing, summer activities).
   `src/sim/balance.test.ts` with the auto-player (`autoplayer.ts`: works a wish-list —
   parking when full, lifts when crowded, trails, lodge, rentals, school, bigger lodge,
   land — buys the first affordable item, borrows only if payments stay < 20% of operating
-  profit, builds staff housing when short of workers, clears credit first) over 20 seeds
-  × 15 years on Berthoud Pass. Current Normal medians (with staff): net worth ~$5M →
-  ~$12M (yr 5) → ~$38M (yr 10) → ~$77M (yr 15); operating profit ~$0.5M (yr 1) → ~$11M
-  (yr 13); ~5% bankrupt; growth accelerates (tested). Expansion parcels carry a holdout premium (`expansionPremium`:
+  profit, builds staff housing when short of workers, snowmaking on up to half its
+  trails, clears credit first) over 20 seeds
+  × 15 years on Berthoud Pass. Current Normal medians (staff + snowmaking): net worth
+  ~$5M → ~$12M (yr 5) → ~$28M (yr 10) → ~$71M (yr 15); operating profit ~$0.5M (yr 1) →
+  ~$11M (yr 15); ~10% bankrupt; growth accelerates (tested). Expansion parcels carry a holdout premium (`expansionPremium`:
   +15% per parcel owned, PLACEHOLDER).
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
-  (v9; v2–v8 upgrade automatically, older versions are discarded).
+  (v10; v2–v9 upgrade automatically, older versions are discarded).
 - **Platform:** phone first (touch, small screen, one-thumb navigation; primary actions
   at the bottom), fine on desktop.
 
@@ -170,7 +178,8 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 6. Sim engine + day-by-day winter loop; simple guest/revenue/cost model; daily summary. (done)
 7. Cash flow, loans, year-end report. (done; season redesign + passes deployed)
 8a. Growth loop: reputation, lift/amenity appeal, base-area amenities, land purchase. (done)
-8b. Staff: roles, hiring, wages, housing, shortages. ← awaiting review
+8b. Staff: roles, hiring, wages, housing, shortages. (done)
+8c. Snowmaking. ← awaiting review
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands

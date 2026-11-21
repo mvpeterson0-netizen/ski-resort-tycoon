@@ -10,15 +10,16 @@ import {
   type DayResult, type SeasonInputs, type SeasonState, type SeasonTotals,
 } from './season'
 import type { Site } from './sites'
+import { maxSnowmakingKm, snowmakingEffects, SNOWMAKING } from './snowmaking'
 import { NO_STAFF, fillRate, headcount, localPool, neededStaff, staffEffects, STAFF_TUNING, type Staffing } from './staff'
 import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySettings'
 import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport } from './finance'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
 // v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
-// v7: season pass price. v8: amenities, reputation. v9: staff.
+// v7: season pass price. v8: amenities, reputation. v9: staff. v10: snowmaking.
 // Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 9
+export const GAME_STATE_VERSION = 10
 
 export interface Loan {
   id: string
@@ -89,6 +90,8 @@ export interface GameState {
   /** Carries over between seasons; multiplies demand (0.6–1.4). */
   reputation: number
   staff: StaffPlan
+  /** Km of trail covered by snowmaking. */
+  snowmakingKm: number
   difficulty: DifficultySettings
   /** Drawn balance on the revolving credit line. */
   creditUsd: number
@@ -134,6 +137,7 @@ export function newGame(
     amenities: { ...NO_AMENITIES },
     reputation: SEASON.reputation.start,
     staff: { mode: 'auto', hired: { ...NO_STAFF }, wageLevel: 1 },
+    snowmakingKm: 0,
     difficulty: { ...difficulty },
     creditUsd: 0,
     // Year 1 opens with the starting cash, then the land purchase and its mortgage.
@@ -187,6 +191,11 @@ export function parseSave(raw: unknown): GameState | null {
   if (g.version === 8) {
     g.staff = { mode: 'auto', hired: { ...NO_STAFF }, wageLevel: 1 }
     if (g.amenities) g.amenities = { ...g.amenities, housing: g.amenities.housing ?? 0 }
+    g.version = 9
+  }
+  if (g.version === 9) {
+    g.snowmakingKm = 0
+    if (g.staff) g.staff = { ...g.staff, hired: { ...g.staff.hired, snowmakers: g.staff.hired.snowmakers ?? 0 } }
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -226,6 +235,8 @@ export function buildLift(g: GameState, plan: LiftPlan, name?: string): BuildRes
 }
 
 export function seasonInputs(g: GameState, site: Site): SeasonInputs {
+  const st = staffing(g, site)
+  const trailKm = g.trails.reduce((s, t) => s + t.lengthM, 0) / 1000
   return {
     avgSnowfallIn: site.traits.avgSnowfallIn,
     driveToMetroMin: site.traits.driveToMetroMin,
@@ -237,7 +248,8 @@ export function seasonInputs(g: GameState, site: Site): SeasonInputs {
     financeDifficulty: g.difficulty.finance,
     amenity: amenityEffects(g.amenities, g.trails.some((t) => t.difficulty === 'green')),
     reputation: g.reputation,
-    staff: staffing(g, site).effects,
+    staff: st.effects,
+    snowmaking: snowmakingEffects(g.snowmakingKm, trailKm, site.traits.waterRights, st.effects.ratios.snowmakers),
   }
 }
 
@@ -245,6 +257,7 @@ export function seasonInputs(g: GameState, site: Site): SeasonInputs {
 export function staffing(g: GameState, site: Site) {
   const needed = neededStaff({
     lifts: g.lifts, trailKm: g.trails.reduce((s, t) => s + t.lengthM, 0) / 1000, hasSchool: g.amenities.school > 0,
+    snowmakingKm: g.snowmakingKm ?? 0,
   })
   const hired = g.staff.mode === 'auto' ? needed : g.staff.hired
   const beds = amenityEffects(g.amenities, false).housingBeds
@@ -336,6 +349,20 @@ export function setStaffPlan(g: GameState, plan: Partial<StaffPlan>): GameState 
   next.wageLevel = Math.round(Math.max(T.minWageLevel, Math.min(T.maxWageLevel, next.wageLevel)) * 100) / 100
   for (const k of Object.keys(next.hired) as (keyof Staffing)[]) next.hired = { ...next.hired, [k]: Math.max(0, Math.round(next.hired[k])) }
   return { ...g, staff: next }
+}
+
+/** Add snowmaking coverage (km), up to what the site's water rights allow. */
+export function buySnowmaking(g: GameState, site: Site, km: number): BuildResult {
+  const trailKm = g.trails.reduce((s, t) => s + t.lengthM, 0) / 1000
+  const room = maxSnowmakingKm(trailKm, site.traits.waterRights) - g.snowmakingKm
+  const add = Math.min(km, Math.round(room * 10) / 10)
+  if (add <= 0) return { ok: false, reason: trailKm <= 0 ? 'Build trails first' : 'Your water rights allow no more coverage' }
+  const cost = Math.round(add * SNOWMAKING.installPerKmUsd)
+  if (cost > g.cashUsd) return { ok: false, reason: 'Not enough cash' }
+  return {
+    ok: true,
+    game: { ...g, cashUsd: g.cashUsd - cost, snowmakingKm: Math.round((g.snowmakingKm + add) * 10) / 10, book: { ...g.book, capexUsd: g.book.capexUsd + cost } },
+  }
 }
 
 export { planPurchase }

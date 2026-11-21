@@ -77,6 +77,7 @@ export function SeasonScreen({ game, onChange, onExit }: {
           <p className="hint">Not enough snow yet. Opening day: {openingLabel(game.year, season.openingDay)}.</p>
         )}
         {today?.stormClosed && <p className="hint">Closed today: storm and wind hold.</p>}
+        {today?.snowmaking && <p className="hint">Snowmaking ran today{today.open ? '' : ' to get you open sooner'}.</p>}
         {today?.open && today.conditions >= 1.4 && <p className="hint">Powder day: demand is way up.</p>}
         {shortRoles.length > 0 && (
           <p className="note">Short-staffed: {shortRoles.map((r) => `${ROLE_SPECS[r].name.toLowerCase()} ${Math.round(staff.effects.ratios[r] * 100)}%`).join(', ')}.</p>

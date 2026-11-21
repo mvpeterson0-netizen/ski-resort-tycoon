@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  AMENITIES, AMENITY_TUNING, amenityEffects, buyAmenity, nextAmenityCost,
+  AMENITIES, AMENITY_TUNING, SNOWMAKING, amenityEffects, buyAmenity, buySnowmaking, maxSnowmakingKm, nextAmenityCost, siteById,
   type AmenityId, type GameState,
 } from '../sim'
 import { usd } from './format'
@@ -36,6 +36,9 @@ export function BaseAreaScreen({ game, onChange, onBack }: { game: GameState; on
       <h2 className="screen-title">Base area</h2>
       <div className="content">
         <p className="tagline">Cash {usd(game.cashUsd)} · appeal +{Math.round((fx.appealMult - 1) * 100)}% · running costs {usd(fx.dailyCostUsd)}/day</p>
+        <h3 className="group">On the mountain</h3>
+        <Snowmaking game={game} onChange={onChange} setMessage={setMessage} />
+        <h3 className="group">Base area</h3>
         <ul className="cards">
           {ORDER.map((id) => {
             const spec = AMENITIES[id]
@@ -76,5 +79,51 @@ export function BaseAreaScreen({ game, onChange, onBack }: { game: GameState; on
       </div>
       <nav className="actions"><button className="btn primary" onClick={onBack}>Done</button></nav>
     </main>
+  )
+}
+
+const WATER_LABEL = { poor: 'Poor', fair: 'Fair', good: 'Good' } as const
+
+function Snowmaking({ game, onChange, setMessage }: {
+  game: GameState; onChange: (g: GameState) => void; setMessage: (m: { text: string; ok: boolean }) => void
+}) {
+  const site = siteById(game.siteId)!
+  const water = site.traits.waterRights
+  const trailKm = game.trails.reduce((s, t) => s + t.lengthM, 0) / 1000
+  const maxKm = maxSnowmakingKm(trailKm, water)
+  const room = Math.round((maxKm - game.snowmakingKm) * 10) / 10
+  const step = Math.min(1, room)
+  const coverage = trailKm > 0 ? game.snowmakingKm / trailKm : 0
+  const offseason = game.phase === 'offseason'
+  return (
+    <div className="card static">
+      <span className="card-title">Snowmaking</span>
+      <span className="badge">{Math.round(coverage * 100)}% of trails</span>
+      <span className="card-sub">
+        Opens your season sooner in poor snow years and keeps covered runs at a {SNOWMAKING.madeBaseIn}" base. Costs energy and water on days it runs, plus a snowmaking crew.
+      </span>
+      <div className="credit-bar" role="img" aria-label={`${game.snowmakingKm} of ${maxKm} km`}>
+        <i style={{ width: `${maxKm > 0 ? Math.min(100, (game.snowmakingKm / maxKm) * 100) : 0}%` }} />
+      </div>
+      <span className="card-sub">
+        <b>{game.snowmakingKm} km</b> covered of {maxKm} km allowed · water rights: {WATER_LABEL[water]}
+        {site.unverified?.includes('waterRights') ? ' (est.)' : ''}
+      </span>
+      {step > 0 ? (
+        <button
+          className="btn primary"
+          disabled={!offseason || step * SNOWMAKING.installPerKmUsd > game.cashUsd}
+          onClick={() => {
+            const r = buySnowmaking(game, site, step)
+            if (r.ok) { onChange(r.game); setMessage({ text: `Added ${step} km of snowmaking`, ok: true }) }
+            else setMessage({ text: r.reason, ok: false })
+          }}
+        >
+          Add {step} km · ${Math.round(step * SNOWMAKING.installPerKmUsd / 1000)}k
+        </button>
+      ) : (
+        <span className="card-sub">{trailKm > 0 ? 'At your water-rights limit. Build more trails to cover more.' : 'Build trails first.'}</span>
+      )}
+    </div>
   )
 }
