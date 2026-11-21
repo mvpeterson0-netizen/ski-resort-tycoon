@@ -78,9 +78,9 @@ export function PurchaseScreen({ site, region, parcel, onBuy, onBack }: {
 }
 
 /** Resort home: the hub screen once the player owns land. Grows in later steps. */
-export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSettings, onFinance, onBase, onQuit }: {
+export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSettings, onFinance, onBase, onStaff, onQuit }: {
   game: GameState; onChange: (g: GameState) => void; onMap: () => void; onBuild: () => void; onSeason: () => void
-  onSettings: () => void; onFinance: () => void; onBase: () => void; onQuit: () => void
+  onSettings: () => void; onFinance: () => void; onBase: () => void; onStaff: () => void; onQuit: () => void
 }) {
   const inSeason = game.phase === 'season'
   const blocker = seasonBlocker(game)
@@ -144,12 +144,13 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
                 <button className={blocker ? 'btn primary' : 'btn'} onClick={onBuild}>Build</button>
               )}
               <button className="btn" onClick={onBase}>Base area</button>
-              <button className="btn" onClick={onFinance}>Finance</button>
+              <button className="btn" onClick={onStaff}>Staff</button>
             </div>
             {blocker && <p className="hint center">To open for winter: {blocker.toLowerCase()}.</p>}
           </>
         )}
         <div className="row small">
+          {!inSeason && <button className="btn" onClick={onFinance}>Finance</button>}
           {site?.terrainId && <button className="btn" onClick={onMap}>Land</button>}
           <button className="btn" onClick={onSettings}>Settings</button>
           <button className="btn" onClick={onQuit}>Menu</button>

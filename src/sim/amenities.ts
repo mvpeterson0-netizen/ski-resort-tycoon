@@ -5,7 +5,7 @@
  * Every number here is a PLACEHOLDER for gameplay balance, not sourced data.
  */
 
-export type AmenityId = 'parking' | 'lodge' | 'rentals' | 'school'
+export type AmenityId = 'parking' | 'lodge' | 'rentals' | 'school' | 'housing'
 
 export interface AmenityLevel {
   costUsd: number
@@ -46,10 +46,19 @@ export const AMENITIES: Record<AmenityId, AmenitySpec> = {
     id: 'school', name: 'Ski school', blurb: 'Lesson income, and families choose you. Best with green terrain.',
     levels: [{ costUsd: 600_000, dailyCostUsd: 1600 }],
   },
+  housing: {
+    id: 'housing', name: 'Staff housing', blurb: 'Beds for workers beyond the local hiring pool.',
+    levels: [
+      { costUsd: 900_000, dailyCostUsd: 400 },
+      { costUsd: 1_000_000, dailyCostUsd: 400 },
+      { costUsd: 1_100_000, dailyCostUsd: 400 },
+      { costUsd: 1_200_000, dailyCostUsd: 400 },
+    ],
+  },
 }
 
 export type AmenityLevels = Record<AmenityId, number>
-export const NO_AMENITIES: AmenityLevels = { parking: 0, lodge: 0, rentals: 0, school: 0 }
+export const NO_AMENITIES: AmenityLevels = { parking: 0, lodge: 0, rentals: 0, school: 0, housing: 0 }
 
 export const AMENITY_TUNING = {
   /** Spaces in the starter gravel lot, and per parking level. */
@@ -65,6 +74,7 @@ export const AMENITY_TUNING = {
   schoolAppeal: 0.03,
   /** Extra school appeal when the mountain has green terrain. */
   schoolGreenBonus: 0.02,
+  bedsPerHousingLevel: 40,
   /** Yearly upkeep as a share of build cost (goes into fixed costs). */
   upkeepShare: 0.03,
 } as const
@@ -76,19 +86,22 @@ export interface AmenityEffects {
   foodMult: number
   /** Rentals + lessons spend per day-ticket guest. */
   extrasPerDayGuestUsd: number
+  /** Of which lessons (scaled by instructor staffing). */
+  lessonsPerDayGuestUsd: number
+  housingBeds: number
   appealMult: number
   dailyCostUsd: number
 }
 
 export const NEUTRAL_EFFECTS: AmenityEffects = {
-  parkingCapGuests: Infinity, foodMult: 1, extrasPerDayGuestUsd: 0, appealMult: 1, dailyCostUsd: 0,
+  parkingCapGuests: Infinity, foodMult: 1, extrasPerDayGuestUsd: 0, lessonsPerDayGuestUsd: 0, housingBeds: 0, appealMult: 1, dailyCostUsd: 0,
 }
 
 export function amenityEffects(a: AmenityLevels, hasGreenTerrain: boolean): AmenityEffects {
   const T = AMENITY_TUNING
   let daily = 0
   for (const id of Object.keys(AMENITIES) as AmenityId[]) {
-    for (let l = 0; l < a[id]; l++) daily += AMENITIES[id].levels[l].dailyCostUsd
+    for (let l = 0; l < (a[id] ?? 0); l++) daily += AMENITIES[id].levels[l].dailyCostUsd
   }
   const appeal = 1 + a.lodge * T.lodgeAppealPerLevel + a.rentals * T.rentalsAppeal
     + a.school * (T.schoolAppeal + (hasGreenTerrain ? T.schoolGreenBonus : 0))
@@ -96,6 +109,8 @@ export function amenityEffects(a: AmenityLevels, hasGreenTerrain: boolean): Amen
     parkingCapGuests: Math.round((T.baseSpaces + a.parking * T.spacesPerLevel) * T.guestsPerSpace),
     foodMult: T.lodgeFoodMult[Math.min(a.lodge, T.lodgeFoodMult.length - 1)],
     extrasPerDayGuestUsd: a.rentals * T.rentalSpendPerDayGuestUsd + a.school * T.lessonSpendPerDayGuestUsd,
+    lessonsPerDayGuestUsd: a.school * T.lessonSpendPerDayGuestUsd,
+    housingBeds: (a.housing ?? 0) * T.bedsPerHousingLevel,
     appealMult: appeal,
     dailyCostUsd: daily,
   }
@@ -111,7 +126,7 @@ export function nextAmenityCost(a: AmenityLevels, id: AmenityId): number | null 
 export function amenityBookValue(a: AmenityLevels): number {
   let v = 0
   for (const id of Object.keys(AMENITIES) as AmenityId[]) {
-    for (let l = 0; l < a[id]; l++) v += AMENITIES[id].levels[l].costUsd
+    for (let l = 0; l < (a[id] ?? 0); l++) v += AMENITIES[id].levels[l].costUsd
   }
   return v
 }

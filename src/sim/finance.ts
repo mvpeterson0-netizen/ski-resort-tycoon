@@ -24,7 +24,7 @@ export const FIN = {
     minUsd: 100_000,
   },
   /** PLACEHOLDER off-season fixed costs (insurance, property tax, upkeep), per year. */
-  fixed: { baseUsd: 400_000, perLiftUsd: 80_000, perTrailUsd: 10_000 },
+  fixed: { baseUsd: 300_000, perLiftUsd: 80_000, perTrailUsd: 10_000 },
 } as const
 
 /** Running cash-flow counters for the current year, reset at each year-end close. */

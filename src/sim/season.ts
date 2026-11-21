@@ -15,6 +15,7 @@
  */
 import { NEUTRAL_EFFECTS, type AmenityEffects } from './amenities'
 import type { LiftType } from './build'
+import { FULL_STAFF, STAFF_TUNING, type StaffEffects } from './staff'
 import { financeModifiers, snowModifiers } from './difficultySettings'
 import { createRng } from './rng'
 
@@ -98,9 +99,9 @@ export const SEASON = {
     variableCostPerGuestUsd: 16,
     liftDailyCostUsd: { ropeTow: 600, fixedDouble: 4000, fixedQuad: 6500 } satisfies Record<LiftType, number>,
     groomPerTrailUsd: 450,
-    // Stand-in for staff wages, insurance and upkeep until those systems exist (step 8).
-    overheadOpenUsd: 18000,
-    overheadClosedUsd: 5000,
+    // Admin, utilities, insurance and non-mountain staff; mountain staff are payroll.
+    overheadOpenUsd: 14500,
+    overheadClosedUsd: 4000,
   },
   defaultTicketPriceUsd: 79,
   defaultPassPriceUsd: 449,
@@ -120,6 +121,8 @@ export interface SeasonInputs {
   amenity?: AmenityEffects
   /** Reputation at season start (0.6–1.4); omitted = new resort. */
   reputation?: number
+  /** Staffing; omitted = fully staffed with no payroll (used by older tests). */
+  staff?: StaffEffects
 }
 
 export interface DayResult {
@@ -237,7 +240,9 @@ function dayFactor(d: Date): number {
 function appeal(inp: SeasonInputs): number {
   const D = SEASON.demand
   const access = clamp(1.6 - inp.driveToMetroMin / 150, 0.2, 1.4)
-  const terrain = clamp(Math.pow(inp.trailKm / D.fullTerrainKm, D.terrainExponent), 0.15, D.maxTerrainFactor)
+  // Patrol shortages keep some terrain closed.
+  const openKm = inp.trailKm * (inp.staff ?? FULL_STAFF).ratios.patrol
+  const terrain = clamp(Math.pow(openKm / D.fullTerrainKm, D.terrainExponent), 0.15, D.maxTerrainFactor)
     * (0.8 + 0.1 * inp.difficultyKinds)
   const lifts = 1 + D.liftAppealPerLog * Math.log(Math.max(1, inp.lifts.length))
   const amenity = (inp.amenity ?? NEUTRAL_EFFECTS).appealMult
@@ -336,7 +341,10 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const stormClosed = reachedOpening && rng.next() < W.stormClosureChance
   const open = reachedOpening && !stormClosed && inp.lifts.length > 0 && inp.trailCount > 0
   const recentSnow = newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0)
-  const conditions = conditionsScore(baseIn, recentSnow, warm)
+  const staff = inp.staff ?? FULL_STAFF
+  // Groomer shortages make the snow worse.
+  const conditions = Math.max(SEASON.conditions.min,
+    Math.round((conditionsScore(baseIn, recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)) * 100) / 100)
 
   // Demand: locals (some hold passes) and visitors.
   const holiday = isHoliday(date)
@@ -350,7 +358,9 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const wantPass = locals * s.passAdoption * P.frequencyBoost
   const wanted = wantDay + wantPass
 
-  const comfort = liftComfortGuests(inp.lifts)
+  // Lift operators run lifts; mechanics keep them at full speed.
+  const liftStaffing = staff.ratios.liftOps * (1 - STAFF_TUNING.mechanicsSpeedShare * (1 - staff.ratios.mechanics))
+  const comfort = Math.floor(liftComfortGuests(inp.lifts) * liftStaffing)
   const liftCap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
   const cap = Math.min(liftCap, amen.parkingCapGuests)
   const guests = Math.round(Math.min(wanted, cap))
@@ -365,11 +375,12 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   // Money (pass revenue is booked when the season starts, not per day).
   const ticketRevenueUsd = dayTicketGuests * s.ticketPriceUsd
   const foodRevenueUsd = Math.round(guests * M.foodPerGuestUsd * amen.foodMult)
-  const extrasRevenueUsd = Math.round(dayTicketGuests * amen.extrasPerDayGuestUsd)
+  const extrasRevenueUsd = Math.round(dayTicketGuests
+    * (amen.extrasPerDayGuestUsd - amen.lessonsPerDayGuestUsd * (1 - staff.ratios.instructors)))
   const costUsd = Math.round(finMod.costs * (open
     ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
       + guests * M.variableCostPerGuestUsd + amen.dailyCostUsd
-    : M.overheadClosedUsd))
+    : M.overheadClosedUsd) + staff.payrollUsd)
 
   // Reputation drifts toward the day's guest experience (conditions, lines, variety).
   const R = SEASON.reputation

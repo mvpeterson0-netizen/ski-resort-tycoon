@@ -14,7 +14,7 @@ describe('amenity effects', () => {
     expect(none.appealMult).toBe(1)
     expect(none.extrasPerDayGuestUsd).toBe(0)
     expect(none.parkingCapGuests).toBe(AMENITY_TUNING.baseSpaces * AMENITY_TUNING.guestsPerSpace)
-    const full = amenityEffects({ parking: 2, lodge: 2, rentals: 1, school: 1 }, true)
+    const full = amenityEffects({ parking: 2, lodge: 2, rentals: 1, school: 1, housing: 1 }, true)
     expect(full.foodMult).toBeGreaterThan(none.foodMult)
     expect(full.appealMult).toBeGreaterThan(1)
     expect(full.extrasPerDayGuestUsd).toBeGreaterThan(0)
@@ -77,7 +77,7 @@ describe('reputation and the growth loop', () => {
     const big = [{ type: 'fixedQuad' as const, capacityPph: 20000 }]
     const one = run({ ...base, lifts: big })
     const many = run({ ...base, lifts: [...big, ...Array(5).fill({ type: 'fixedDouble', capacityPph: 1 })] })
-    const amen = run({ ...base, lifts: big, amenity: amenityEffects({ parking: 4, lodge: 2, rentals: 1, school: 1 }, true) })
+    const amen = run({ ...base, lifts: big, amenity: amenityEffects({ parking: 4, lodge: 2, rentals: 1, school: 1, housing: 0 }, true) })
     expect(many.guests).toBeGreaterThan(one.guests)
     expect(amen.guests).toBeGreaterThan(one.guests)
   })

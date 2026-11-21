@@ -1,5 +1,5 @@
 import {
-  SEASON, advanceDay, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, setTicketPrice, siteById,
+  ROLES, ROLE_SPECS, SEASON, advanceDay, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, setTicketPrice, siteById, staffing,
   type DayResult, type GameState,
 } from '../sim'
 import { usd } from './format'
@@ -43,6 +43,8 @@ export function SeasonScreen({ game, onChange, onExit }: {
   const today = season?.days.at(-1) ?? null
   const totals = season ? seasonTotals(season.days, season) : null
   const cap = liftComfortGuests(seasonInputs(game, site).lifts)
+  const staff = staffing(game, site)
+  const shortRoles = ROLES.filter((r) => staff.needed[r] > 0 && staff.effects.ratios[r] < 0.999)
 
   const step = (n: number) => {
     let g = game
@@ -76,6 +78,9 @@ export function SeasonScreen({ game, onChange, onExit }: {
         )}
         {today?.stormClosed && <p className="hint">Closed today: storm and wind hold.</p>}
         {today?.open && today.conditions >= 1.4 && <p className="hint">Powder day: demand is way up.</p>}
+        {shortRoles.length > 0 && (
+          <p className="note">Short-staffed: {shortRoles.map((r) => `${ROLE_SPECS[r].name.toLowerCase()} ${Math.round(staff.effects.ratios[r] * 100)}%`).join(', ')}.</p>
+        )}
         {today?.open && today.warm && <p className="hint">Warm day: slushy snow is keeping some skiers away.</p>}
 
         {today && (

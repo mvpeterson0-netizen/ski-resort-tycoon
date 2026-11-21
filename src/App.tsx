@@ -4,6 +4,7 @@ import { BaseAreaScreen } from './ui/BaseArea'
 import { BuildScreen } from './ui/Build'
 import { SeasonScreen } from './ui/Season'
 import { SettingsScreen } from './ui/Settings'
+import { StaffScreen } from './ui/Staff'
 import { BankruptScreen, FinanceScreen, YearEndScreen } from './ui/Finance'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
@@ -25,6 +26,7 @@ type Nav =
   | { screen: 'season' }
   | { screen: 'finance' }
   | { screen: 'base' }
+  | { screen: 'staff' }
   | { screen: 'report' }
   | { screen: 'settings'; back: 'title' | 'home' }
 
@@ -121,6 +123,7 @@ export default function App() {
           onSettings={() => setNav({ screen: 'settings', back: 'home' })}
           onFinance={() => setNav({ screen: 'finance' })}
           onBase={() => setNav({ screen: 'base' })}
+          onStaff={() => setNav({ screen: 'staff' })}
           onSeason={() => {
             if (game.phase !== 'season') {
               const site = siteById(game.siteId)!
@@ -160,6 +163,9 @@ export default function App() {
           <YearEndScreen game={game} onContinue={() => setNav({ screen: 'home' })} />
         )
       )
+    case 'staff':
+      if (!game) return null
+      return <StaffScreen game={game} onChange={persist} onBack={() => setNav({ screen: 'home' })} onBase={() => setNav({ screen: 'base' })} />
     case 'base':
       if (!game) return null
       return <BaseAreaScreen game={game} onChange={persist} onBack={() => setNav({ screen: 'home' })} />

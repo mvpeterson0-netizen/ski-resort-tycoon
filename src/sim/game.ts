@@ -10,14 +10,15 @@ import {
   type DayResult, type SeasonInputs, type SeasonState, type SeasonTotals,
 } from './season'
 import type { Site } from './sites'
+import { NO_STAFF, fillRate, headcount, localPool, neededStaff, staffEffects, STAFF_TUNING, type Staffing } from './staff'
 import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySettings'
 import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport } from './finance'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
 // v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
-// v7: season pass price. v8: amenities, reputation.
+// v7: season pass price. v8: amenities, reputation. v9: staff.
 // Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 8
+export const GAME_STATE_VERSION = 9
 
 export interface Loan {
   id: string
@@ -54,6 +55,14 @@ export interface Lift {
 
 export type Phase = 'offseason' | 'season'
 
+export interface StaffPlan {
+  /** auto: headcount follows the recommended numbers; manual: the player's numbers. */
+  mode: 'auto' | 'manual'
+  hired: Staffing
+  /** Wage multiplier, 0.9–1.3 of standard. */
+  wageLevel: number
+}
+
 export interface GameState {
   version: typeof GAME_STATE_VERSION
   seed: number
@@ -79,6 +88,7 @@ export interface GameState {
   amenities: AmenityLevels
   /** Carries over between seasons; multiplies demand (0.6–1.4). */
   reputation: number
+  staff: StaffPlan
   difficulty: DifficultySettings
   /** Drawn balance on the revolving credit line. */
   creditUsd: number
@@ -123,6 +133,7 @@ export function newGame(
     passPriceUsd: SEASON.defaultPassPriceUsd,
     amenities: { ...NO_AMENITIES },
     reputation: SEASON.reputation.start,
+    staff: { mode: 'auto', hired: { ...NO_STAFF }, wageLevel: 1 },
     difficulty: { ...difficulty },
     creditUsd: 0,
     // Year 1 opens with the starting cash, then the land purchase and its mortgage.
@@ -171,6 +182,11 @@ export function parseSave(raw: unknown): GameState | null {
   if (g.version === 7) {
     g.amenities = { ...NO_AMENITIES }
     g.reputation = SEASON.reputation.start
+    g.version = 8
+  }
+  if (g.version === 8) {
+    g.staff = { mode: 'auto', hired: { ...NO_STAFF }, wageLevel: 1 }
+    if (g.amenities) g.amenities = { ...g.amenities, housing: g.amenities.housing ?? 0 }
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -221,7 +237,20 @@ export function seasonInputs(g: GameState, site: Site): SeasonInputs {
     financeDifficulty: g.difficulty.finance,
     amenity: amenityEffects(g.amenities, g.trails.some((t) => t.difficulty === 'green')),
     reputation: g.reputation,
+    staff: staffing(g, site).effects,
   }
+}
+
+/** Recommended and actual staffing for the resort as built. */
+export function staffing(g: GameState, site: Site) {
+  const needed = neededStaff({
+    lifts: g.lifts, trailKm: g.trails.reduce((s, t) => s + t.lengthM, 0) / 1000, hasSchool: g.amenities.school > 0,
+  })
+  const hired = g.staff.mode === 'auto' ? needed : g.staff.hired
+  const beds = amenityEffects(g.amenities, false).housingBeds
+  const pool = localPool(site.traits.driveToMetroMin)
+  const fill = fillRate(headcount(hired), pool, beds, g.staff.wageLevel)
+  return { needed, hired, pool, beds, fill, effects: staffEffects(hired, needed, fill, g.staff.wageLevel) }
 }
 
 /** Why the season cannot start yet, or null if it can. */
@@ -299,6 +328,14 @@ export function buyParcel(g: GameState, parcelId: string, priceUsd: number): Bui
       ownedParcels: [...g.ownedParcels, parcelId], book: { ...g.book, capexUsd: g.book.capexUsd + priceUsd },
     },
   }
+}
+
+export function setStaffPlan(g: GameState, plan: Partial<StaffPlan>): GameState {
+  const T = STAFF_TUNING
+  const next = { ...g.staff, ...plan }
+  next.wageLevel = Math.round(Math.max(T.minWageLevel, Math.min(T.maxWageLevel, next.wageLevel)) * 100) / 100
+  for (const k of Object.keys(next.hired) as (keyof Staffing)[]) next.hired = { ...next.hired, [k]: Math.max(0, Math.round(next.hired[k])) }
+  return { ...g, staff: next }
 }
 
 export { planPurchase }

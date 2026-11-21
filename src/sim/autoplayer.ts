@@ -8,7 +8,7 @@ import { AMENITIES, nextAmenityCost, type AmenityId } from './amenities'
 import { BUILD, type LiftType } from './build'
 import type { DifficultySettings } from './difficultySettings'
 import { planPurchase } from './economy'
-import { advanceDay, beginSeason, buyAmenity, newGame, type GameState, type Lift, type Trail } from './game'
+import { advanceDay, beginSeason, buyAmenity, newGame, staffing, type GameState, type Lift, type Trail } from './game'
 import { FIN, assetValue, fixedCosts, loanDebt, takeTermLoan, termLoanLimit } from './finance'
 import type { Site } from './sites'
 
@@ -113,8 +113,11 @@ function reinvest(g: GameState, o: Opts, landQueue: number[]): GameState {
       return cost === null ? null : { cost, apply: (x: GameState) => { const r = buyAmenity(x, id); return r.ok ? r.game : x } }
     }
     const lodgeMax = g.amenities.lodge >= AMENITIES.lodge.levels.length
+    // Short of workers (local pool + beds can't fill the roster): build staff housing.
+    const understaffed = staffing(g, o.site).fill < 0.97
     // Wish-list in priority order; buy the first one that is affordable.
     const wishes: (Option | null | false)[] = [
+      understaffed && amenity('housing'),
       parkingFull && amenity('parking'),
       crowded && liftRoom && lift,
       kmRoom && { cost: trailCostUsd(TRAIL_M), apply: addTrail },

@@ -5,7 +5,7 @@ import {
 } from '../sim'
 import { usd } from './format'
 
-const ORDER: AmenityId[] = ['parking', 'lodge', 'rentals', 'school']
+const ORDER: AmenityId[] = ['parking', 'lodge', 'rentals', 'school', 'housing']
 
 /** What the current level of each amenity does, in plain words. */
 function effectLine(id: AmenityId, level: number): string {
@@ -21,6 +21,8 @@ function effectLine(id: AmenityId, level: number): string {
       return level === 0 ? 'Not built' : `+$${T.rentalSpendPerDayGuestUsd} per day-ticket guest · appeal +${Math.round(T.rentalsAppeal * 100)}%`
     case 'school':
       return level === 0 ? 'Not built' : `+$${T.lessonSpendPerDayGuestUsd} per day-ticket guest · families +${Math.round(T.schoolAppeal * 100)}%`
+    case 'housing':
+      return level === 0 ? 'No beds: local hires only' : `${level * T.bedsPerHousingLevel} beds for staff`
   }
 }
 
