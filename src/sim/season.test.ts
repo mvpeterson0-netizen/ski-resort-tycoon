@@ -102,7 +102,7 @@ describe('simulateDay', () => {
 
   it('books revenue and costs consistently', () => {
     for (const d of run(9).days) {
-      expect(d.netUsd).toBe(d.ticketRevenueUsd + d.foodRevenueUsd - d.costUsd)
+      expect(d.netUsd).toBe(d.ticketRevenueUsd + d.foodRevenueUsd + d.extrasRevenueUsd + d.eventIncomeUsd - d.costUsd)
       expect(d.guests).toBe(d.dayTicketGuests + d.passVisits)
       if (!d.open) expect(d.guests).toBe(0)
     }

@@ -89,6 +89,14 @@ with a reduced off-season (building, hiring, financing, summer activities).
   it runs (pre-season, 2 weeks after opening, whenever base < 40"; poor water pricier),
   3% yearly upkeep, and a snowmaker crew (new staff role; shortages cut coverage). All
   PLACEHOLDER. GameState v10.
+- **Breakdowns & events (`src/sim/events.ts`):** rolled on open days from a separate RNG
+  stream (weather unchanged). Lift breakdowns (1–2 days down + repair; odds ×up to 4 when
+  short of mechanics), groomer breakdowns (worse conditions 2 days), power outages
+  (35% of guests), injury lawsuits (resort's share after insurance; odds rise with
+  crowds and a thin patrol; reputation hit), viral reviews (good: powder + short lines;
+  bad: 20+ min lines or icy snow), one race weekend per season (needs black terrain and
+  3+ trails: fee, reputation, fewer day skiers). Shown on the season screen; costs in
+  the year report. All PLACEHOLDER. Starter resort impact ≈ $58k/season.
 - **Financing kept minor (owner request):** land mortgage 6%/25 yr, term loans 6.5%/15 yr,
   credit line 8%, so pricing, lifts and amenities decide outcomes, not interest.
 - **Difficulty sliders (owner request):** Settings screen (title + resort home) with
@@ -112,9 +120,10 @@ with a reduced off-season (building, hiring, financing, summer activities).
   land — buys the first affordable item, borrows only if payments stay < 20% of operating
   profit, builds staff housing when short of workers, snowmaking on up to half its
   trails, clears credit first) over 20 seeds
-  × 15 years on Berthoud Pass. Current Normal medians (staff + snowmaking): net worth
-  ~$5M → ~$12M (yr 5) → ~$28M (yr 10) → ~$71M (yr 15); operating profit ~$0.5M (yr 1) →
-  ~$11M (yr 15); ~10% bankrupt; growth accelerates (tested). Expansion parcels carry a holdout premium (`expansionPremium`:
+  × 15 years on Berthoud Pass. Current Normal medians (staff, snowmaking, events; market
+  base 950): net worth ~$5M → ~$12M (yr 5) → ~$41M (yr 10) → ~$86M (yr 15); operating
+  profit ~$0.6M (yr 1) → ~$13M (yr 15); 0% bankrupt. NOTE: the start is steep — market
+  base 900 gave ~15% bankrupt — so small early margins decide survival; growth accelerates (tested). Expansion parcels carry a holdout premium (`expansionPremium`:
   +15% per parcel owned, PLACEHOLDER).
 - **Starting finances:** fixed starting cash + one land mortgage, down payment chosen
   by slider (lender minimum applies). Values PLACEHOLDER in `src/sim/economy.ts`.
@@ -179,7 +188,8 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 7. Cash flow, loans, year-end report. (done; season redesign + passes deployed)
 8a. Growth loop: reputation, lift/amenity appeal, base-area amenities, land purchase. (done)
 8b. Staff: roles, hiring, wages, housing, shortages. (done)
-8c. Snowmaking. ← awaiting review
+8c. Snowmaking. (done)
+8d. Breakdowns & events. ← awaiting review
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands

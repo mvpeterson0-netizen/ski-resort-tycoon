@@ -33,7 +33,9 @@ export function YearReportView({ r, season }: { r: YearReport; season?: SeasonTo
         ) : (
           <Row label="Season revenue" value={money(r.seasonRevenueUsd)} />
         )}
-        <Row label="Season operating costs" value={money(-r.seasonCostUsd)} />
+        <Row label="Season operating costs" value={money(-r.seasonCostUsd)}
+          hint={season && season.eventCostUsd > 0 ? `Includes ${money(season.eventCostUsd)} of breakdowns and incidents` : undefined} />
+        {season && season.eventIncomeUsd > 0 && <Row label="Race hosting" value={money(season.eventIncomeUsd)} />}
         <Row label="Off-season fixed costs" value={money(-r.fixedCostsUsd)} hint="Insurance, property tax, upkeep" />
         <Row label="Interest" value={money(-r.interestUsd)} hint="Loans and credit line" />
         <Row label="Net income" value={money(r.netIncomeUsd)} total hint="Before depreciation and tax (not modelled yet)" />

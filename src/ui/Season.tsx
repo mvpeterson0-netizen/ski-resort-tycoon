@@ -44,6 +44,7 @@ export function SeasonScreen({ game, onChange, onExit }: {
   const totals = season ? seasonTotals(season.days, season) : null
   const cap = liftComfortGuests(seasonInputs(game, site).lifts)
   const staff = staffing(game, site)
+  const recent = (season?.days ?? []).slice(0, -1).flatMap((d) => (d.events ?? []).map((e) => ({ d, e }))).slice(-5).reverse()
   const shortRoles = ROLES.filter((r) => staff.needed[r] > 0 && staff.effects.ratios[r] < 0.999)
 
   const step = (n: number) => {
@@ -86,6 +87,18 @@ export function SeasonScreen({ game, onChange, onExit }: {
 
         {today && (
           <>
+            {today.events.length > 0 && (
+              <ul className="events">
+                {today.events.map((e, i) => (
+                  <li key={i} className={e.reputationDelta > 0 || e.incomeUsd > 0 ? 'good' : 'bad'}>
+                    <b>{e.text}</b>
+                    {e.costUsd > 0 && <span>{money(-e.costUsd)}</span>}
+                    {e.incomeUsd > 0 && <span>+{money(e.incomeUsd)}</span>}
+                    {e.reputationDelta !== 0 && <span>Reputation {e.reputationDelta > 0 ? '+' : '−'}{Math.round(Math.abs(e.reputationDelta) * 100)}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
             <h3 className="group">Today</h3>
             <dl className="traits">
               <div className="trait">
@@ -108,6 +121,18 @@ export function SeasonScreen({ game, onChange, onExit }: {
           </>
         )}
 
+        {recent.length > 0 && (
+          <>
+            <h3 className="group">Recent events</h3>
+            <ul className="events compact">
+              {recent.map(({ d, e }, i) => (
+                <li key={i} className={e.reputationDelta > 0 || e.incomeUsd > 0 ? 'good' : 'bad'}>
+                  <b>{dayLabel(d)}</b> {e.text}{e.costUsd > 0 ? ` (${money(-e.costUsd)})` : ''}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <h3 className="group">Season so far</h3>
         <GuestBars days={season.days} cap={cap} />
         <div className="kpis">

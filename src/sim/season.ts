@@ -18,6 +18,7 @@ import type { LiftType } from './build'
 import { NO_SNOWMAKING, SNOWMAKING, effectiveBase, type SnowmakingEffects } from './snowmaking'
 import { FULL_STAFF, STAFF_TUNING, type StaffEffects } from './staff'
 import { financeModifiers, snowModifiers } from './difficultySettings'
+import { newEventState, rollDay, type EventState, type SeasonEvent } from './events'
 import { createRng } from './rng'
 
 export const SEASON = {
@@ -50,7 +51,7 @@ export const SEASON = {
   },
   demand: {
     /** Potential Saturday guests for a ~10 km area near a metro (balance-tuned). */
-    marketBase: 900,
+    marketBase: 950,
     weekday: 0.35, saturday: 1, sunday: 0.85, holiday: 1.15,
     /** Share of the market that is local (pass candidates); the rest are visitors. */
     localShare: 0.6,
@@ -126,6 +127,11 @@ export interface SeasonInputs {
   staff?: StaffEffects
   /** Snowmaking; omitted = none. */
   snowmaking?: SnowmakingEffects
+  /** Lift names for event messages; omitted = "Lift 1", "Lift 2"… */
+  liftNames?: string[]
+  hasBlack?: boolean
+  /** Turn breakdowns and events off (used by focused tests). */
+  noEvents?: boolean
 }
 
 export interface DayResult {
@@ -161,6 +167,11 @@ export interface DayResult {
   reputation: number
   /** Snowmaking ran today. */
   snowmaking: boolean
+  events: SeasonEvent[]
+  /** Repairs and settlements (included in costUsd). */
+  eventCostUsd: number
+  /** Race fees (included in netUsd). */
+  eventIncomeUsd: number
 }
 
 export interface SeasonState {
@@ -179,6 +190,8 @@ export interface SeasonState {
   passAdoption: number
   passRevenueUsd: number
   reputation: number
+  /** Breakdown state and the event RNG; absent on seasons saved before v11. */
+  events?: EventState
   days: DayResult[]
 }
 
@@ -202,6 +215,9 @@ export interface SeasonTotals {
   avgConditions: number
   /** Reputation at the end of the season (null if no days). */
   reputation: number | null
+  eventCostUsd: number
+  eventIncomeUsd: number
+  eventCount: number
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -306,6 +322,7 @@ export function startSeason(
     passAdoption: pass.adoption,
     passRevenueUsd: pass.revenueUsd,
     reputation: inp.reputation ?? SEASON.reputation.start,
+    events: newEventState((seed ^ Math.imul(gameYear + 7919, 0x85ebca6b)) >>> 0, inp.lifts.length),
     rngState: rng.state(),
     days: [],
   }
@@ -349,29 +366,46 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const open = reachedOpening && !stormClosed && inp.lifts.length > 0 && inp.trailCount > 0
   const recentSnow = newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0)
   const staff = inp.staff ?? FULL_STAFF
+  // Breakdowns and events (separate RNG stream; only on open days).
+  const ev = open && !inp.noEvents && s.events
+    ? rollDay(
+        s.events.liftDownDays.length === inp.lifts.length ? s.events : { ...s.events, liftDownDays: inp.lifts.map((_, i) => s.events!.liftDownDays[i] ?? 0) },
+        {
+          liftNames: inp.liftNames ?? inp.lifts.map((_, i) => `Lift ${i + 1}`),
+          mechanicsRatio: staff.ratios.mechanics, patrolRatio: staff.ratios.patrol,
+          expectedGuests: s.days.at(-1)?.guests ?? 0, conditions: conditionsScore(baseIn, newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0), warm),
+          lastWaitMin: s.days.at(-1)?.waitMin ?? 0,
+          weekend: date.getUTCDay() === 0 || date.getUTCDay() === 6,
+          hasBlack: inp.hasBlack ?? inp.difficultyKinds >= 3, trailCount: inp.trailCount,
+        },
+        createRng(s.events.rngState),
+      )
+    : null
   const snowSys = inp.snowmaking ?? NO_SNOWMAKING
   // The system runs before opening, for two weeks after, and whenever the base is thin.
   const snowmakingRuns = snowSys.coverage > 0 && !warm
     && (s.day < s.openingDay + SNOWMAKING.runDaysAfterOpening || baseIn < SNOWMAKING.madeBaseIn)
   // Groomer shortages make the snow worse.
   const conditions = Math.max(SEASON.conditions.min,
-    Math.round((conditionsScore(effectiveBase(baseIn, snowSys.coverage), recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)) * 100) / 100)
+    Math.round((conditionsScore(effectiveBase(baseIn, snowSys.coverage), recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)
+      - (ev ? ev.fx.conditionsPenalty : 0)) * 100) / 100)
 
   // Demand: locals (some hold passes) and visitors.
   const holiday = isHoliday(date)
   const noise = lerp(D.noise[0], D.noise[1], rng.next())
   const amen = inp.amenity ?? NEUTRAL_EFFECTS
-  const market = open ? D.marketBase * dayFactor(date) * conditions * appeal(inp) * s.reputation * noise : 0
+  const market = open ? D.marketBase * dayFactor(date) * conditions * appeal(inp) * s.reputation * noise * (ev ? ev.fx.guestMult : 1) : 0
   const priceFactor = Math.pow(D.referencePriceUsd / s.ticketPriceUsd, D.priceElasticity)
   const locals = market * D.localShare
   const visitors = market - locals
-  const wantDay = (locals * (1 - s.passAdoption) + visitors) * priceFactor
+  const wantDay = (locals * (1 - s.passAdoption) + visitors) * priceFactor * (ev ? ev.fx.dayDemandMult : 1)
   const wantPass = locals * s.passAdoption * P.frequencyBoost
   const wanted = wantDay + wantPass
 
   // Lift operators run lifts; mechanics keep them at full speed.
   const liftStaffing = staff.ratios.liftOps * (1 - STAFF_TUNING.mechanicsSpeedShare * (1 - staff.ratios.mechanics))
-  const comfort = Math.floor(liftComfortGuests(inp.lifts) * liftStaffing)
+  const runningLifts = ev ? inp.lifts.filter((_, i) => !ev.fx.liftsDown.has(i)) : inp.lifts
+  const comfort = Math.floor(liftComfortGuests(runningLifts) * liftStaffing)
   const liftCap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
   const cap = Math.min(liftCap, amen.parkingCapGuests)
   const guests = Math.round(Math.min(wanted, cap))
@@ -391,7 +425,7 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
   const costUsd = Math.round(finMod.costs * (open
     ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
       + guests * M.variableCostPerGuestUsd + amen.dailyCostUsd
-    : M.overheadClosedUsd) + staff.payrollUsd + (snowmakingRuns ? snowSys.runCostUsd : 0))
+    : M.overheadClosedUsd) + staff.payrollUsd + (snowmakingRuns ? snowSys.runCostUsd : 0)) + (ev ? ev.fx.costUsd : 0)
 
   // Reputation drifts toward the day's guest experience (conditions, lines, variety).
   const R = SEASON.reputation
@@ -403,6 +437,9 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
     )
     reputation = clamp(reputation + (experience - reputation) * R.dailyWeight, R.min, R.max)
   }
+  if (ev) reputation = clamp(reputation + ev.fx.reputationDelta, R.min, R.max)
+  const eventCostUsd = ev ? ev.fx.costUsd : 0
+  const eventIncomeUsd = ev ? ev.fx.incomeUsd : 0
 
   const result: DayResult = {
     day: s.day,
@@ -411,12 +448,15 @@ export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: Season
     guests, dayTicketGuests, passVisits, turnedAway, parkingTurnedAway, waitMin,
     ticketPriceUsd: s.ticketPriceUsd,
     ticketRevenueUsd, foodRevenueUsd, extrasRevenueUsd, costUsd,
-    netUsd: ticketRevenueUsd + foodRevenueUsd + extrasRevenueUsd - costUsd,
+    netUsd: ticketRevenueUsd + foodRevenueUsd + extrasRevenueUsd + eventIncomeUsd - costUsd,
     reputation: Math.round(reputation * 1000) / 1000,
     snowmaking: snowmakingRuns,
+    events: ev ? ev.fx.events : [],
+    eventCostUsd,
+    eventIncomeUsd,
   }
   return {
-    season: { ...s, day: s.day + 1, baseIn, reputation, rngState: rng.state(), days: [...s.days, result] },
+    season: { ...s, day: s.day + 1, baseIn, reputation, rngState: rng.state(), events: ev ? ev.state : s.events, days: [...s.days, result] },
     result,
   }
 }
@@ -430,6 +470,7 @@ export function seasonTotals(days: DayResult[], passes?: Pick<SeasonState, 'pass
     passRevenueUsd: passes?.passRevenueUsd ?? 0, ticketRevenueUsd: 0, foodRevenueUsd: 0, extrasRevenueUsd: 0,
     revenueUsd: passes?.passRevenueUsd ?? 0, costUsd: 0, netUsd: passes?.passRevenueUsd ?? 0,
     snowfallIn: 0, turnedAway: 0, parkingTurnedAway: 0, avgConditions: 0, reputation: days.at(-1)?.reputation ?? null,
+    eventCostUsd: 0, eventIncomeUsd: 0, eventCount: 0,
   }
   let condSum = 0
   for (const d of days) {
@@ -439,7 +480,10 @@ export function seasonTotals(days: DayResult[], passes?: Pick<SeasonState, 'pass
     t.ticketRevenueUsd += d.ticketRevenueUsd
     t.foodRevenueUsd += d.foodRevenueUsd
     t.extrasRevenueUsd += d.extrasRevenueUsd
-    t.revenueUsd += d.ticketRevenueUsd + d.foodRevenueUsd + d.extrasRevenueUsd
+    t.revenueUsd += d.ticketRevenueUsd + d.foodRevenueUsd + d.extrasRevenueUsd + (d.eventIncomeUsd ?? 0)
+    t.eventCostUsd += d.eventCostUsd ?? 0
+    t.eventIncomeUsd += d.eventIncomeUsd ?? 0
+    t.eventCount += d.events?.length ?? 0
     t.costUsd += d.costUsd
     t.netUsd += d.netUsd
     t.snowfallIn += d.newSnowIn

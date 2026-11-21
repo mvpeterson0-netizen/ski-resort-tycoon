@@ -249,6 +249,8 @@ export function seasonInputs(g: GameState, site: Site): SeasonInputs {
     amenity: amenityEffects(g.amenities, g.trails.some((t) => t.difficulty === 'green')),
     reputation: g.reputation,
     staff: st.effects,
+    liftNames: g.lifts.map((l) => l.name),
+    hasBlack: g.trails.some((t) => t.difficulty === 'black'),
     snowmaking: snowmakingEffects(g.snowmakingKm, trailKm, site.traits.waterRights, st.effects.ratios.snowmakers),
   }
 }
