@@ -184,6 +184,8 @@ export interface DayResult {
   peakOnHill?: number
   /** Guests arriving in each half hour (9:00 on; night ticks follow). */
   hourly?: number[]
+  /** What your decisions did today (from replaying the day with them changed). */
+  impact?: import('./impact').DayImpact
 }
 
 export interface SeasonState {

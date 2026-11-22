@@ -16,7 +16,8 @@ import { NEUTRAL_EFFECTS } from './amenities'
 import { financeModifiers, snowModifiers } from './difficultySettings'
 import { rollDay, type EventState, type SeasonEvent } from './events'
 import type { DayOps } from './pricing'
-import { NO_PROMO, type PromoEffects } from './promos'
+import type { DayImpact } from './impact'
+import { NO_PROMO, type Promo, type PromoEffects } from './promos'
 import { createRng } from './rng'
 import {
   SEASON, conditionsScore, isHoliday, liftComfortGuests, seasonDate, appealOf, dayFactorOf,
@@ -178,6 +179,10 @@ export interface LiveDay {
   /** Event state to carry to tomorrow (edited by card choices). */
   nextEvents: EventState | null
   seed: number
+  /** The context the day started with (price, plans, campaigns), for replays. */
+  base?: LiveContext
+  /** Everything the player decided, in order. Absent on a day saved before this was recorded. */
+  log?: LiveAction[]
 }
 
 export interface LiveContext {
@@ -185,9 +190,19 @@ export interface LiveContext {
   promo: PromoEffects
   priceUsd: number
   nightPriceUsd: number
+  /** All booked campaigns (so a report can ask what one of them did). */
+  promos?: Promo[]
   /** Skip rolling events (focused tests). */
   noCards?: boolean
 }
+
+/** One decision the player made during the day, so the day can be replayed with changes. */
+export type LiveAction =
+  | { tick: number; kind: 'price'; value: number }
+  | { tick: number; kind: 'nightPrice'; value: number }
+  | { tick: number; kind: 'lift'; lift: number; mode: LiftMode }
+  | { tick: number; kind: 'night'; on: boolean }
+  | { tick: number; kind: 'card'; cardId: string; option: string }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -283,6 +298,7 @@ export function startLiveDay(s: SeasonState, inp: SeasonInputs, ctx: LiveContext
     cards, pending: null, rows: [],
     acc: { guests: 0, dayGuests: 0, wanted: 0, parkingAway: 0, ticketRev: 0, food: 0, extras: 0, cost: 0, eventCost: 0, eventIncome: 0, peakWait: 0, nightGuests: 0, nightRev: 0 },
     repDelta: 0, nextEvents: ev ? ev.state : (s.events ?? null), seed: (s.rngState ^ Math.imul(s.day + 1, 0x9e3779b1)) >>> 0,
+    base: ctx, log: [],
   }
 }
 
@@ -336,7 +352,10 @@ export function answerCard(live: LiveDay, inp: SeasonInputs, optionId: string): 
   const choice = card.options.some((o) => o.id === optionId) ? optionId : card.defaultOption
   const o = resolveCard(card, choice, live.tick, totalTicks(live, inp), (live.seed ^ Math.imul(card.tick + 1, 0x85ebca6b)) >>> 0)
   const next = applyOutcome(live, card, o)
-  return { ...next, cards: next.cards.map((c) => (c.id === card.id ? { ...c, answered: choice } : c)) }
+  return {
+    ...next, cards: next.cards.map((c) => (c.id === card.id ? { ...c, answered: choice } : c)),
+    ...(live.log ? { log: [...live.log, { tick: live.tick, kind: 'card' as const, cardId: card.id, option: choice }] } : {}),
+  }
 }
 
 /**
@@ -460,7 +479,7 @@ export function runToEnd(live: LiveDay, inp: SeasonInputs): LiveDay {
 }
 
 /** Compile the finished day into the season state and the day's result. */
-export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs): { season: SeasonState; result: DayResult } {
+export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs, impact?: DayImpact | null): { season: SeasonState; result: DayResult } {
   const prep = live.prep
   const R = SEASON.reputation
   const a = live.acc
@@ -511,6 +530,7 @@ export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs):
       },
     } : {}),
     ...(open ? { peakOnHill: Math.max(0, ...live.rows.map((r) => r.onHill)), hourly: live.rows.map((r) => Math.round(r.arrived)) } : {}),
+    ...(impact ? { impact } : {}),
   }
   return {
     season: {
@@ -526,9 +546,22 @@ export const plainContext = (s: SeasonState): LiveContext => ({ ops: {}, promo: 
 
 // ---- player controls (each returns a new LiveDay) ----
 
-export const setLivePrice = (live: LiveDay, priceUsd: number): LiveDay => ({ ...live, priceUsd: clamp(Math.round(priceUsd), 10, 250) })
-export const setLiveNightPrice = (live: LiveDay, priceUsd: number): LiveDay => ({ ...live, nightPriceUsd: clamp(Math.round(priceUsd), 10, 250) })
-export const setLiftMode = (live: LiveDay, lift: number, mode: LiftMode): LiveDay => ({ ...live, lifts: live.lifts.map((m, i) => (i === lift ? mode : m)) })
+/** Add a decision to the log (only when the day has one: older saved days are left alone). */
+const logged = (live: LiveDay, next: LiveDay, a: LiveAction): LiveDay => (live.log ? { ...next, log: [...live.log, a] } : next)
+
+export function setLivePrice(live: LiveDay, priceUsd: number): LiveDay {
+  const v = clamp(Math.round(priceUsd), 10, 250)
+  return logged(live, { ...live, priceUsd: v }, { tick: live.tick, kind: 'price', value: v })
+}
+export function setLiveNightPrice(live: LiveDay, priceUsd: number): LiveDay {
+  const v = clamp(Math.round(priceUsd), 10, 250)
+  return logged(live, { ...live, nightPriceUsd: v }, { tick: live.tick, kind: 'nightPrice', value: v })
+}
+export function setLiftMode(live: LiveDay, lift: number, mode: LiftMode): LiveDay {
+  return logged(live, { ...live, lifts: live.lifts.map((m, i) => (i === lift ? mode : m)) }, { tick: live.tick, kind: 'lift', lift, mode })
+}
 /** The night session can be switched until it starts. */
-export const setLiveNight = (live: LiveDay, on: boolean): LiveDay => (live.tick <= LIVE.dayTicks ? { ...live, night: on } : live)
+export function setLiveNight(live: LiveDay, on: boolean): LiveDay {
+  return live.tick <= LIVE.dayTicks ? logged(live, { ...live, night: on }, { tick: live.tick, kind: 'night', on }) : live
+}
 

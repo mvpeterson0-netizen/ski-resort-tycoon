@@ -53,7 +53,7 @@ function fastForward(game: GameState, site: NonNullable<ReturnType<typeof siteBy
       if (g.live?.pending) return { game: g, days, last, results }
     }
     if (!g.live) break
-    const r = finishDay(g, site)
+    const r = finishDay(g, site, true)
     g = r.game
     last = r.result
     results.push(r.result)
@@ -103,7 +103,7 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
     const id = setTimeout(() => {
       const g = gameRef.current
       if (liveDayDone(g, site)) {
-        const r = finishDay(g, site)
+        const r = finishDay(g, site, true)
         setLast(r.result)
         setReportDays(r.result.open && !auto ? [r.result] : null)
         onChange(r.game)

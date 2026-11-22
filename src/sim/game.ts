@@ -17,6 +17,7 @@ import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport }
 import type { BasePlacement } from './village'
 import { newCalendar, priceForDay, type PriceCalendar } from './pricing'
 import { promoEffects, type Promo } from './promos'
+import { computeImpact } from './impact'
 import {
   answerCard, finishLiveDay, isDayDone, runToEnd, startLiveDay, tickLiveDay, type LiveContext, type LiveDay,
 } from './liveDay'
@@ -367,6 +368,7 @@ export function liveContextFor(g: GameState): LiveContext {
     nightPriceUsd: g.calendar.night,
     ops: g.calendar.ops[day] ?? {},
     promo: promoEffects(g.promos, day, date.getUTCDay()),
+    promos: g.promos,
   }
 }
 
@@ -389,9 +391,12 @@ export function answerLiveCard(g: GameState, site: Site, optionId: string): Game
 export const liveDayDone = (g: GameState, site: Site) => !!g.live && isDayDone(g.live, seasonInputs(g, site))
 
 /** Close the finished live day: cash moves by the day's net; the last day closes the season. */
-export function finishDay(g: GameState, site: Site): { game: GameState; result: DayResult } {
+export function finishDay(g: GameState, site: Site, withImpact = false): { game: GameState; result: DayResult } {
   if (!g.season || !g.live) throw new Error('No day to finish')
-  const { season, result } = finishLiveDay(g.live, g.season, seasonInputs(g, site))
+  const inp = seasonInputs(g, site)
+  // Replaying the day under other choices costs a little; the player's screens ask for it, the auto-player does not.
+  const impact = withImpact ? computeImpact(g.season, inp, g.live, liveContextFor(g)) : null
+  const { season, result } = finishLiveDay(g.live, g.season, inp, impact)
   // Cash moves by the day's net; a shortfall is covered by the credit line (or bankrupts).
   let next: GameState = ensureLiquidity({ ...g, season, live: null, cashUsd: g.cashUsd + result.netUsd })
   if (seasonOver(season)) next = finishSeason(next)

@@ -174,7 +174,23 @@ with a reduced off-season (building, hiring, financing, summer activities).
   guest costs, snowmaking, lighting, marketing, repairs), conditions, what happened (cards with what
   you paid), season so far and tomorrow's forecast/price/plans. A skip ends with a report covering the
   days skipped. Closed days before opening pass without a report; "Auto-play days" turns reports off.
-  `DayResult` gained `costParts`, `peakOnHill`, `hourly`.
+  `DayResult` gained `costParts`, `peakOnHill`, `hourly`. The layout is dense and spreadsheet-like
+  (owner request: fit more without scrolling).
+- **Decision feedback (`src/sim/impact.ts`, owner request: "a feedback loop to get better"):** the
+  live day records the player's decisions (`LiveDay.log`) and the day sim is deterministic, so
+  `computeImpact` replays the finished day with one choice changed and compares net: ticket price
+  (best price in ±$30 that keeps lines ≤ 10 min / no more turned away than today, i.e. the price
+  that fills the hill; verdict too high / too low / about right), live price changes, each running
+  campaign (extra skiers, sales, cost; season totals summed in the report), lifts slowed/closed,
+  night session (run, or missed), overtime crew (used, or missed when lifts were the limit),
+  snowmaking push, and the other option on each event card. Generates takeaways (best call, biggest
+  cost/miss) and flavour "guest" quotes (labelled as generated). Safety check: if a no-change replay
+  does not reproduce the real day, no feedback is shown. Today's takings only (no reputation or
+  later days). `finishDay(g, site, true)` computes it; the auto-player does not.
+  NOTE for design review: with the placeholder day-price elasticity (1.2) a cheaper ticket always
+  earns more on days with spare room, so the price advice tends toward "lower it until the hill is
+  full" (the guardrail stops it there). A demand curve whose elasticity rises with price would give
+  a more natural interior optimum.
 - **Saves:** `parseSave` fills in anything newer builds added (night lighting, calendar, promos, live
   day, base) for any version, so a save from before a feature existed never crashes a screen.
 - **Price calendar (`GameState.calendar`, v12):** weekday price = `ticketPriceUsd`; weekend (×1.15)
