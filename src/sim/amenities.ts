@@ -5,7 +5,7 @@
  * Every number here is a PLACEHOLDER for gameplay balance, not sourced data.
  */
 
-export type AmenityId = 'parking' | 'lodge' | 'rentals' | 'school' | 'housing'
+export type AmenityId = 'parking' | 'lodge' | 'rentals' | 'school' | 'housing' | 'lights'
 
 export interface AmenityLevel {
   costUsd: number
@@ -57,6 +57,14 @@ export const AMENITIES: Record<AmenityId, AmenitySpec> = {
       { costUsd: 1_300_000, dailyCostUsd: 2800 },
     ],
   },
+  lights: {
+    id: 'lights', name: 'Night lighting', blurb: 'Light part of the mountain and sell night tickets. Costs only on nights you run it.',
+    // Running cost is charged per night session, not every day (see nightCostUsd).
+    levels: [
+      { costUsd: 1_600_000, dailyCostUsd: 0 },
+      { costUsd: 2_800_000, dailyCostUsd: 0 },
+    ],
+  },
   housing: {
     id: 'housing', name: 'Staff housing', blurb: 'Beds for workers beyond the local hiring pool.',
     levels: [
@@ -69,7 +77,7 @@ export const AMENITIES: Record<AmenityId, AmenitySpec> = {
 }
 
 export type AmenityLevels = Record<AmenityId, number>
-export const NO_AMENITIES: AmenityLevels = { parking: 0, lodge: 0, rentals: 0, school: 0, housing: 0 }
+export const NO_AMENITIES: AmenityLevels = { parking: 0, lodge: 0, rentals: 0, school: 0, housing: 0, lights: 0 }
 
 export const AMENITY_TUNING = {
   /** Spaces in the starter gravel lot, and per parking level. */
@@ -88,6 +96,10 @@ export const AMENITY_TUNING = {
   /** Extra school appeal when the mountain has green terrain. */
   schoolGreenBonus: 0.02,
   bedsPerHousingLevel: 40,
+  /** Share of lift capacity lit for night skiing, by lighting level. */
+  lightsShare: [0, 0.35, 0.7],
+  /** Power and extra crew per night session, by lighting level. */
+  lightsNightCostUsd: [0, 3_500, 6_500],
   /** Yearly upkeep as a share of build cost (goes into fixed costs). */
   upkeepShare: 0.03,
 } as const
@@ -104,10 +116,14 @@ export interface AmenityEffects {
   housingBeds: number
   appealMult: number
   dailyCostUsd: number
+  /** Night skiing: share of lift capacity lit (0 = no lights) and the cost of one night. */
+  nightShare: number
+  nightCostUsd: number
 }
 
 export const NEUTRAL_EFFECTS: AmenityEffects = {
   parkingCapGuests: Infinity, foodMult: 1, extrasPerDayGuestUsd: 0, lessonsPerDayGuestUsd: 0, housingBeds: 0, appealMult: 1, dailyCostUsd: 0,
+  nightShare: 0, nightCostUsd: 0,
 }
 
 export function amenityEffects(a: AmenityLevels, hasGreenTerrain: boolean): AmenityEffects {
@@ -126,6 +142,8 @@ export function amenityEffects(a: AmenityLevels, hasGreenTerrain: boolean): Amen
     housingBeds: (a.housing ?? 0) * T.bedsPerHousingLevel,
     appealMult: appeal,
     dailyCostUsd: daily,
+    nightShare: T.lightsShare[a.lights ?? 0] ?? 0,
+    nightCostUsd: T.lightsNightCostUsd[a.lights ?? 0] ?? 0,
   }
 }
 

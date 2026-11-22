@@ -14,6 +14,10 @@ export function effectLine(id: AmenityId, level: number): string {
       return level === 0 ? 'Not built' : `+$${T.rentalSpendPerDayGuestUsd[level]} per day-ticket guest · appeal +${Math.round(level * T.rentalsAppeal * 100)}%`
     case 'school':
       return level === 0 ? 'Not built' : `+$${T.lessonSpendPerDayGuestUsd[level]} per day-ticket guest · families +${Math.round(level * T.schoolAppeal * 100)}%`
+    case 'lights':
+      return level === 0
+        ? 'No night skiing'
+        : `${Math.round(T.lightsShare[level] * 100)}% of lift capacity lit · ${T.lightsNightCostUsd[level].toLocaleString('en-US')} USD per night run`
     case 'housing':
       return level === 0 ? 'No beds: local hires only' : `${level * T.bedsPerHousingLevel} beds for staff`
   }

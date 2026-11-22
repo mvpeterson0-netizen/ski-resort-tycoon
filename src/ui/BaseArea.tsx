@@ -6,7 +6,7 @@ import {
 import { usd } from './format'
 import { effectLine } from './amenityText'
 
-const ORDER: AmenityId[] = ['parking', 'lodge', 'rentals', 'school', 'housing']
+const ORDER: AmenityId[] = ['parking', 'lodge', 'rentals', 'school', 'housing', 'lights']
 
 export function BaseAreaScreen({ game, onChange, onBack }: { game: GameState; onChange: (g: GameState) => void; onBack: () => void }) {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null)

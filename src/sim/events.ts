@@ -16,9 +16,11 @@ export const EVENTS = {
   viralGood: { chancePerDay: 0.012, minConditions: 1.3, maxWaitMin: 5, reputationGain: 0.04 },
   viralBad: { chancePerDay: 0.015, minWaitMin: 20, maxConditions: 0.6, reputationHit: 0.04 },
   race: { chancePerWeekendDay: 0.025, minTrails: 3, feeUsd: 40_000, dayGuestShare: 0.8, reputationGain: 0.03, onePerSeason: true },
+  // A ski club or school asks to book a discounted group. Only an offer: declining costs nothing.
+  groupBooking: { chancePerWeekday: 0.012, guests: [150, 400] as const, perGuestUsd: 38 },
 } as const
 
-export type EventKind = 'liftBreakdown' | 'groomerBreakdown' | 'powerOutage' | 'lawsuit' | 'viralGood' | 'viralBad' | 'race'
+export type EventKind = 'liftBreakdown' | 'groomerBreakdown' | 'powerOutage' | 'lawsuit' | 'viralGood' | 'viralBad' | 'race' | 'groupBooking'
 
 export interface SeasonEvent {
   kind: EventKind
@@ -27,6 +29,11 @@ export interface SeasonEvent {
   /** Positive for income (race fee). */
   incomeUsd: number
   reputationDelta: number
+  /** Which lift (index) broke, and for how many days. */
+  lift?: number
+  days?: number
+  /** Group size for a booking offer. */
+  guests?: number
 }
 
 /** Ongoing effects carried day to day. */
@@ -90,7 +97,7 @@ export function rollDay(state: EventState, ctx: EventContext, rng: Rng): { state
     const days = Math.round(between(rng, E.liftBreakdown.days))
     const cost = roundK(between(rng, E.liftBreakdown.repairUsd))
     liftDownDays[i] = days
-    events.push({ kind: 'liftBreakdown', text: `${name} broke down: closed ${days} day${days > 1 ? 's' : ''}`, costUsd: cost, incomeUsd: 0, reputationDelta: 0 })
+    events.push({ kind: 'liftBreakdown', text: `${name} broke down: closed ${days} day${days > 1 ? 's' : ''}`, costUsd: cost, incomeUsd: 0, reputationDelta: 0, lift: i, days })
   })
 
   if (groomerDownDays === 0 && rng.next() < E.groomerBreakdown.chancePerDay) {
@@ -122,6 +129,12 @@ export function rollDay(state: EventState, ctx: EventContext, rng: Rng): { state
     raceHeld = true
     dayDemandMult = E.race.dayGuestShare
     events.push({ kind: 'race', text: 'You hosted a regional race: fee, crowds at the lodge, and good press', costUsd: 0, incomeUsd: E.race.feeUsd, reputationDelta: E.race.reputationGain })
+  }
+
+  // A group booking offer on a quiet weekday (rolled last so earlier events keep their odds).
+  if (!ctx.weekend && rng.next() < E.groupBooking.chancePerWeekday) {
+    const guests = Math.round(between(rng, E.groupBooking.guests) / 10) * 10
+    events.push({ kind: 'groupBooking', text: `A ski club asks to book ${guests} skiers today`, costUsd: 0, incomeUsd: 0, reputationDelta: 0, guests })
   }
 
   const liftsDown = new Set<number>()

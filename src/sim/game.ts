@@ -6,7 +6,7 @@ import { AMENITIES, NO_AMENITIES, amenityEffects, nextAmenityCost, type AmenityI
 import type { Difficulty, LiftPlan, LiftType, Pt, TrailPlan } from './build'
 import { ECON, planPurchase, type PurchasePlan } from './economy'
 import {
-  SEASON, seasonOver, seasonTotals, simulateDay, startSeason,
+  SEASON, seasonDate, seasonOver, seasonTotals, startSeason,
   type DayResult, type SeasonInputs, type SeasonState, type SeasonTotals,
 } from './season'
 import type { Site } from './sites'
@@ -15,13 +15,19 @@ import { NO_STAFF, fillRate, headcount, localPool, neededStaff, staffEffects, ST
 import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySettings'
 import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport } from './finance'
 import type { BasePlacement } from './village'
+import { newCalendar, priceForDay, type PriceCalendar } from './pricing'
+import { promoEffects, type Promo } from './promos'
+import {
+  answerCard, finishLiveDay, isDayDone, runToEnd, startLiveDay, tickLiveDay, type LiveContext, type LiveDay,
+} from './liveDay'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
 // v5: difficulty sliders. v6 (step 7): credit line, year book, reports, bankruptcy.
 // v7: season pass price. v8: amenities, reputation. v9: staff. v10: snowmaking.
 // v11: base village placement and package value.
+// v12: price calendar (weekend/holiday/night prices, per-day plans) and marketing promos.
 // Older saves from v2 upward are upgraded in parseSave.
-export const GAME_STATE_VERSION = 11
+export const GAME_STATE_VERSION = 12
 
 export interface Loan {
   id: string
@@ -106,6 +112,12 @@ export interface GameState {
   base: BasePlacement | null
   /** Book value of the starter base village (package + access road). */
   villageUsd: number
+  /** Weekend, holiday and night prices plus per-day plans. Weekday price is ticketPriceUsd. */
+  calendar: PriceCalendar
+  /** Marketing campaigns booked for this or the coming season. */
+  promos: Promo[]
+  /** The day being played hour by hour, or null between days. */
+  live: LiveDay | null
 }
 
 /** The starter base village bought with the land. */
@@ -160,6 +172,9 @@ export function newGame(
     bankrupt: false,
     base: village.base,
     villageUsd: village.costUsd,
+    calendar: newCalendar(),
+    promos: [],
+    live: null,
   }
 }
 
@@ -223,6 +238,12 @@ export function parseSave(raw: unknown): GameState | null {
     // Older resorts get their village placed on the map later (UI suggests a spot); no charge.
     g.base = null
     g.villageUsd = 0
+    g.version = 11
+  }
+  if (g.version === 11) {
+    g.calendar = newCalendar()
+    g.promos = []
+    g.live = null
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
@@ -307,7 +328,9 @@ export function seasonBlocker(g: GameState): string | null {
 export function beginSeason(g: GameState, site: Site): GameState {
   const why = seasonBlocker(g)
   if (why) throw new Error(why)
-  const season = startSeason(g.year, g.seed, seasonInputs(g, site), g.ticketPriceUsd, g.passPriceUsd)
+  // Pass sales key off the weekday sticker price; each day then uses its calendar price.
+  const started = startSeason(g.year, g.seed, seasonInputs(g, site), g.ticketPriceUsd, g.passPriceUsd)
+  const season = { ...started, ticketPriceUsd: priceForDay(g.ticketPriceUsd, g.calendar, g.year, 0) }
   return { ...g, phase: 'season', season, cashUsd: g.cashUsd + season.passRevenueUsd }
 }
 
@@ -317,19 +340,63 @@ export function setPassPrice(g: GameState, priceUsd: number): GameState {
   return { ...g, passPriceUsd: Math.max(50, Math.min(3000, Math.round(priceUsd))) }
 }
 
+/** Set the weekday ticket price. Weekend and holiday defaults follow it; the next day uses the new price. */
 export function setTicketPrice(g: GameState, priceUsd: number): GameState {
   const p = Math.max(10, Math.min(250, Math.round(priceUsd)))
-  return { ...g, ticketPriceUsd: p, season: g.season ? { ...g.season, ticketPriceUsd: p } : null }
+  const season = g.season ? { ...g.season, ticketPriceUsd: priceForDay(p, g.calendar, g.year, g.season.day) } : null
+  return { ...g, ticketPriceUsd: p, season }
 }
 
-/** Simulate one day; cash moves by the day's net. Ends the season after the last day. */
+/** Price, day plan and campaigns for the season day about to be played. */
+export function liveContextFor(g: GameState): LiveContext {
+  const day = g.season?.day ?? 0
+  const date = seasonDate(g.year, day)
+  return {
+    priceUsd: priceForDay(g.ticketPriceUsd, g.calendar, g.year, day),
+    nightPriceUsd: g.calendar.night,
+    ops: g.calendar.ops[day] ?? {},
+    promo: promoEffects(g.promos, day, date.getUTCDay()),
+  }
+}
+
+/** Begin playing the next season day hour by hour. No-op if a day is already under way. */
+export function startDay(g: GameState, site: Site): GameState {
+  if (!g.season || g.phase !== 'season' || g.live) return g
+  return { ...g, live: startLiveDay(g.season, seasonInputs(g, site), liveContextFor(g)) }
+}
+
+/** Run the next 30 minutes (or stop on an event card). */
+export function playTick(g: GameState, site: Site): GameState {
+  return g.live ? { ...g, live: tickLiveDay(g.live, seasonInputs(g, site)) } : g
+}
+
+/** Answer the event card the day is paused on. */
+export function answerLiveCard(g: GameState, site: Site, optionId: string): GameState {
+  return g.live ? { ...g, live: answerCard(g.live, seasonInputs(g, site), optionId) } : g
+}
+
+export const liveDayDone = (g: GameState, site: Site) => !!g.live && isDayDone(g.live, seasonInputs(g, site))
+
+/** Close the finished live day: cash moves by the day's net; the last day closes the season. */
+export function finishDay(g: GameState, site: Site): { game: GameState; result: DayResult } {
+  if (!g.season || !g.live) throw new Error('No day to finish')
+  const { season, result } = finishLiveDay(g.live, g.season, seasonInputs(g, site))
+  // Cash moves by the day's net; a shortfall is covered by the credit line (or bankrupts).
+  let next: GameState = ensureLiquidity({ ...g, season, live: null, cashUsd: g.cashUsd + result.netUsd })
+  if (seasonOver(season)) next = finishSeason(next)
+  else if (next.season) next = { ...next, season: { ...next.season, ticketPriceUsd: priceForDay(next.ticketPriceUsd, next.calendar, next.year, next.season.day) } }
+  return { game: next, result }
+}
+
+/**
+ * Play a whole day with default choices (event cards answered with their default
+ * option). Used by the auto-player, tests and as a fallback; the live screen steps the
+ * day itself.
+ */
 export function advanceDay(g: GameState, site: Site): { game: GameState; result: DayResult } {
   if (!g.season || g.phase !== 'season') throw new Error('No season running')
-  const { season, result } = simulateDay(g.season, seasonInputs(g, site))
-  // Cash moves by the day's net; a shortfall is covered by the credit line (or bankrupts).
-  let next: GameState = ensureLiquidity({ ...g, season, cashUsd: g.cashUsd + result.netUsd })
-  if (seasonOver(season)) next = finishSeason(next)
-  return { game: next, result }
+  const started = startDay(g, site)
+  return finishDay({ ...started, live: runToEnd(started.live!, seasonInputs(started, site)) }, site)
 }
 
 /** Close the season, then close the year (fixed costs, loan payments, report). */
@@ -337,7 +404,8 @@ export function finishSeason(g: GameState): GameState {
   if (!g.season) return g
   const totals = { ...seasonTotals(g.season.days, g.season), year: g.season.year }
   const closed = closeYear({ ...g, phase: 'offseason', lastSeason: totals, season: null, reputation: g.season.reputation }, totals).game
-  return { ...closed, year: g.year + 1 }
+  // The season's day plans and campaigns are spent; a new season starts with a clean calendar.
+  return { ...closed, year: g.year + 1, calendar: { ...closed.calendar, ops: {} }, promos: [] }
 }
 
 export function setDifficulty(g: GameState, d: Partial<DifficultySettings>): GameState {

@@ -1,0 +1,500 @@
+/**
+ * The live day: one season day played in 30-minute ticks (9:00–16:00, plus an optional
+ * night session 17:00–21:00) so the player can watch the resort fill up and react.
+ *
+ * It uses the same demand, capacity and cost formulas as the old whole-day model, with
+ * arrivals spread over the day by a fixed profile. With no decisions and no events the
+ * day's totals match the whole-day numbers (checked in tests), so balance is unchanged.
+ * Decisions that change things mid-day: ticket price, closing or slowing lifts, event
+ * cards, and the night session.
+ *
+ * Pure and JSON-serialisable: the live state is saved with the game, so a day can be
+ * resumed after a reload. Every number here is a PLACEHOLDER for gameplay.
+ */
+import { buildCard, resolveCard, type CardOutcome, type EventCard } from './cards'
+import { NEUTRAL_EFFECTS } from './amenities'
+import { financeModifiers, snowModifiers } from './difficultySettings'
+import { rollDay, type EventState, type SeasonEvent } from './events'
+import type { DayOps } from './pricing'
+import { NO_PROMO, type PromoEffects } from './promos'
+import { createRng } from './rng'
+import {
+  SEASON, conditionsScore, isHoliday, liftComfortGuests, seasonDate, appealOf, dayFactorOf,
+  type DayResult, type SeasonInputs, type SeasonState,
+} from './season'
+import { NO_SNOWMAKING, SNOWMAKING, effectiveBase } from './snowmaking'
+import { FULL_STAFF, STAFF_TUNING } from './staff'
+
+export const LIVE = {
+  dayTicks: 14,
+  nightTicks: 8,
+  dayStartMin: 9 * 60,
+  nightStartMin: 17 * 60,
+  tickMin: 30,
+  /** How many ticks a day guest stays on the hill (for the lift-line estimate). */
+  dayStayTicks: 10,
+  nightStayTicks: 4,
+  /** Relative arrivals per tick: a morning surge, a lunch dip, a taper into the afternoon. */
+  dayWeights: [10, 13, 12, 10, 8, 7, 7, 6, 5, 5, 4, 4, 3, 3],
+  nightWeights: [14, 18, 18, 16, 14, 10, 6, 4],
+  /** Night session demand as a share of the day's market (mostly locals). */
+  nightMarketShare: 0.2,
+  nightRefPriceUsd: 35,
+  /** Pass holders' night visits relative to their day visits. */
+  nightPassShare: 0.12,
+  slowCapacity: 0.5,
+  slowCost: 0.7,
+  overtimeCapacity: 1.15,
+  overtimePayrollPremium: 0.25,
+  snowPushIn: 4,
+  snowPushCostMult: 0.8,
+  /** Event cards fire in this tick range (group offers earlier). */
+  cardTicks: [2, 11] as const,
+  offerTicks: [1, 4] as const,
+} as const
+
+const sum = (a: readonly number[]) => a.reduce((s, v) => s + v, 0)
+const norm = (w: readonly number[]) => { const t = sum(w); return w.map((v) => v / t) }
+export const DAY_W = norm(LIVE.dayWeights)
+export const NIGHT_W = norm(LIVE.nightWeights)
+
+/** Peak share of a session's guests on the hill at once, given how long they stay. */
+function peakShare(w: number[], stay: number): number {
+  let best = 0
+  for (let t = 0; t < w.length; t++) best = Math.max(best, sum(w.slice(Math.max(0, t - stay + 1), t + 1)))
+  return best
+}
+const DAY_PEAK = peakShare(DAY_W, LIVE.dayStayTicks)
+const NIGHT_PEAK = peakShare(NIGHT_W, LIVE.nightStayTicks)
+
+export type LiftMode = 'open' | 'slow' | 'closed'
+
+/** Clock time of a tick, e.g. "9:30" or "17:00". */
+export function tickTime(tick: number): string {
+  const min = tick < LIVE.dayTicks ? LIVE.dayStartMin + tick * LIVE.tickMin : LIVE.nightStartMin + (tick - LIVE.dayTicks) * LIVE.tickMin
+  return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`
+}
+
+/** Everything fixed when the day starts (weather, events rolled, demand before price). */
+export interface DayPrep {
+  day: number
+  date: string
+  weekday: number
+  holiday: boolean
+  newSnowIn: number
+  warm: boolean
+  baseIn: number
+  open: boolean
+  stormClosed: boolean
+  /** Conditions at opening, including any groomer breakdown carried over. */
+  conditions: number
+  snowmaking: boolean
+  /** Full-day demand before price: locals and visitors (conditions, appeal, reputation, noise). */
+  locals: number
+  visitors: number
+  passAdoption: number
+  /** Main RNG state after today's draws. */
+  rngStateAfter: number
+  /** Lifts closed all day by breakdowns carried over from earlier days. */
+  carryDown: boolean[]
+  /** Cost of a closed day. */
+  closedCostUsd: number
+  /** Snowmaking push cost added today (0 if none). */
+  pushCostUsd: number
+}
+
+export interface LiveTick {
+  tick: number
+  /** Guests arriving this tick (including a booked group). */
+  arrived: number
+  onHill: number
+  queueMin: number
+  turnedAway: number
+  revenueUsd: number
+  /** Lifts running. */
+  lifts: number
+  priceUsd: number
+}
+
+interface Acc {
+  guests: number
+  dayGuests: number
+  wanted: number
+  parkingAway: number
+  ticketRev: number
+  food: number
+  extras: number
+  cost: number
+  eventCost: number
+  eventIncome: number
+  peakWait: number
+  nightGuests: number
+  nightRev: number
+}
+
+export interface LiveFx {
+  /** Lift i is closed while tick < liftUntil[i] (a breakdown). */
+  liftUntil: number[]
+  outageMult: number
+  outageUntil: number
+  groomerPenalty: number
+  dayDemandMult: number
+  groupPerTick: number
+  groupUntil: number
+  groupPriceUsd: number
+}
+
+export interface LiveDay {
+  prep: DayPrep
+  tick: number
+  priceUsd: number
+  night: boolean
+  nightPriceUsd: number
+  /** The player's lift settings. */
+  lifts: LiftMode[]
+  promo: PromoEffects
+  ops: DayOps
+  fx: LiveFx
+  cards: EventCard[]
+  /** Id of a card waiting for an answer. */
+  pending: string | null
+  rows: LiveTick[]
+  acc: Acc
+  repDelta: number
+  /** Event state to carry to tomorrow (edited by card choices). */
+  nextEvents: EventState | null
+  seed: number
+}
+
+export interface LiveContext {
+  ops: DayOps
+  promo: PromoEffects
+  priceUsd: number
+  nightPriceUsd: number
+  /** Skip rolling events (focused tests). */
+  noCards?: boolean
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+const END = 99
+
+export function totalTicks(live: LiveDay, inp: SeasonInputs): number {
+  if (!live.prep.open) return 0
+  return LIVE.dayTicks + (live.night && (inp.amenity ?? NEUTRAL_EFFECTS).nightShare > 0 ? LIVE.nightTicks : 0)
+}
+export const isDayDone = (live: LiveDay, inp: SeasonInputs) => live.tick >= totalTicks(live, inp)
+
+/** Weather, events and demand for the day; consumes the season RNG in the same order as before. */
+export function startLiveDay(s: SeasonState, inp: SeasonInputs, ctx: LiveContext): LiveDay {
+  const rng = createRng(s.rngState)
+  const W = SEASON.weather, D = SEASON.demand, M = SEASON.money
+  const date = seasonDate(s.year, s.day)
+  const progress = s.day / SEASON.lengthDays
+  const snowMod = snowModifiers(inp.snowDifficulty ?? 0.5)
+  const finMod = financeModifiers(inp.financeDifficulty ?? 0.5)
+  const snowSys = inp.snowmaking ?? NO_SNOWMAKING
+  const staff = inp.staff ?? FULL_STAFF
+
+  let newSnowIn = 0
+  if (rng.next() < W.stormChance) {
+    const mean = s.expectedSnowIn / (SEASON.lengthDays * W.stormChance)
+    newSnowIn = Math.round(-Math.log(1 - rng.next()) * mean)
+  }
+  const warm = rng.next() < lerp(W.warmChance[0], W.warmChance[1], progress) * snowMod.warmChance
+  let baseIn = s.baseIn + newSnowIn * W.settleRatio
+  if (warm) baseIn -= lerp(W.warmMeltIn[0], W.warmMeltIn[1], rng.next())
+  const reachedOpening = s.day >= s.openingDay
+  // An overnight snowmaking push adds made snow on days the resort is running.
+  const canPush = !!ctx.ops.snowPush && snowSys.coverage > 0 && !warm && reachedOpening
+  if (canPush) baseIn += LIVE.snowPushIn * snowSys.coverage
+  if (reachedOpening) baseIn = Math.max(baseIn, W.baseFloorIn)
+  baseIn = Math.max(0, Math.round(baseIn * 10) / 10)
+  const stormClosed = reachedOpening && rng.next() < W.stormClosureChance
+  const open = reachedOpening && !stormClosed && inp.lifts.length > 0 && inp.trailCount > 0
+  const recentSnow = newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0)
+
+  // Breakdowns and events roll on a separate RNG stream and only on open days.
+  const carryDown = inp.lifts.map((_, i) => Math.max(0, (s.events?.liftDownDays[i] ?? 0) - 1) > 0)
+  const carryGroomer = Math.max(0, (s.events?.groomerDownDays ?? 0) - 1) > 0
+  const ev = open && !ctx.noCards && s.events
+    ? rollDay(
+        s.events.liftDownDays.length === inp.lifts.length ? s.events : { ...s.events, liftDownDays: inp.lifts.map((_, i) => s.events!.liftDownDays[i] ?? 0) },
+        {
+          liftNames: inp.liftNames ?? inp.lifts.map((_, i) => `Lift ${i + 1}`),
+          mechanicsRatio: staff.ratios.mechanics, patrolRatio: staff.ratios.patrol,
+          expectedGuests: s.days.at(-1)?.guests ?? 0, conditions: conditionsScore(baseIn, recentSnow, warm),
+          lastWaitMin: s.days.at(-1)?.waitMin ?? 0,
+          weekend: date.getUTCDay() === 0 || date.getUTCDay() === 6,
+          hasBlack: inp.hasBlack ?? inp.difficultyKinds >= 3, trailCount: inp.trailCount,
+        },
+        createRng(s.events.rngState),
+      )
+    : null
+
+  const conditions = Math.max(SEASON.conditions.min,
+    Math.round((conditionsScore(effectiveBase(baseIn, snowSys.coverage), recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)
+      - (carryGroomer ? 0.1 : 0)) * 100) / 100)
+
+  const noise = lerp(D.noise[0], D.noise[1], rng.next())
+  const market = open ? D.marketBase * dayFactorOf(date) * conditions * appealOf(inp) * s.reputation * noise : 0
+  const locals = market * D.localShare
+  const snowmakingRuns = snowSys.coverage > 0 && !warm
+    && (s.day < s.openingDay + SNOWMAKING.runDaysAfterOpening || baseIn < SNOWMAKING.madeBaseIn)
+  const pushCostUsd = canPush ? Math.round(snowSys.runCostUsd * LIVE.snowPushCostMult) : 0
+  const closedCostUsd = Math.round(finMod.costs * M.overheadClosedUsd + staff.payrollUsd + (snowmakingRuns ? snowSys.runCostUsd : 0))
+
+  // Schedule the day's events as cards at random times.
+  const cards: EventCard[] = []
+  if (ev) {
+    const trng = createRng((ev.state.rngState ^ 0x5bd1e995) >>> 0)
+    const names = inp.liftNames ?? inp.lifts.map((_, i) => `Lift ${i + 1}`)
+    ev.fx.events.forEach((e: SeasonEvent, i) => {
+      const [lo, hi] = e.kind === 'groupBooking' ? LIVE.offerTicks : LIVE.cardTicks
+      const tick = lo + Math.floor(trng.next() * (hi - lo + 1))
+      cards.push(buildCard(e, `c${s.day}-${i}`, tick, names[e.lift ?? 0] ?? 'A lift'))
+    })
+    cards.sort((a, b) => a.tick - b.tick)
+  }
+
+  const prep: DayPrep = {
+    day: s.day, date: date.toISOString().slice(0, 10), weekday: date.getUTCDay(), holiday: isHoliday(date),
+    newSnowIn, warm, baseIn, open, stormClosed, conditions, snowmaking: snowmakingRuns,
+    locals, visitors: market - locals, passAdoption: s.passAdoption, rngStateAfter: rng.state(), carryDown, closedCostUsd, pushCostUsd,
+  }
+  return {
+    prep, tick: 0, priceUsd: ctx.priceUsd, night: !!ctx.ops.night, nightPriceUsd: ctx.nightPriceUsd,
+    lifts: inp.lifts.map(() => 'open' as LiftMode), promo: ctx.promo, ops: ctx.ops,
+    fx: { liftUntil: inp.lifts.map(() => 0), outageMult: 1, outageUntil: 0, groomerPenalty: 0, dayDemandMult: 1, groupPerTick: 0, groupUntil: 0, groupPriceUsd: 0 },
+    cards, pending: null, rows: [],
+    acc: { guests: 0, dayGuests: 0, wanted: 0, parkingAway: 0, ticketRev: 0, food: 0, extras: 0, cost: 0, eventCost: 0, eventIncome: 0, peakWait: 0, nightGuests: 0, nightRev: 0 },
+    repDelta: 0, nextEvents: ev ? ev.state : (s.events ?? null), seed: (s.rngState ^ Math.imul(s.day + 1, 0x9e3779b1)) >>> 0,
+  }
+}
+
+/** Is lift i running at this tick, and at what share of its capacity? */
+function liftFactor(live: LiveDay, i: number, tick: number): number {
+  if (live.prep.carryDown[i] || tick < live.fx.liftUntil[i]) return 0
+  const m = live.lifts[i]
+  return m === 'closed' ? 0 : m === 'slow' ? LIVE.slowCapacity : 1
+}
+
+/** The next unanswered card due by this tick, if any. */
+const dueCard = (live: LiveDay) => live.cards.find((c) => !c.answered && c.tick <= live.tick) ?? null
+
+/** Apply a card's chosen option to the rest of the day and tomorrow. */
+function applyOutcome(live: LiveDay, card: EventCard, o: CardOutcome): LiveDay {
+  const fx = { ...live.fx, liftUntil: [...live.fx.liftUntil] }
+  let nextEvents = live.nextEvents ? { ...live.nextEvents, liftDownDays: [...live.nextEvents.liftDownDays] } : null
+  const here = live.tick
+  if (o.liftDown) {
+    fx.liftUntil[o.liftDown.lift] = o.liftDown.reopenTick ?? END
+    if (nextEvents) nextEvents.liftDownDays[o.liftDown.lift] = o.liftDown.carryDays > 0 ? o.liftDown.carryDays + 1 : 0
+  }
+  if (o.groomerDown) {
+    fx.groomerPenalty = Math.max(fx.groomerPenalty, o.groomerDown.penalty)
+    if (nextEvents) nextEvents.groomerDownDays = o.groomerDown.carryDays + 1
+  } else if (card.event.kind === 'groomerBreakdown' && nextEvents) {
+    nextEvents.groomerDownDays = 0
+  }
+  if (o.outage) { fx.outageMult = o.outage.mult; fx.outageUntil = o.outage.untilTick ?? END }
+  if (o.dayDemandMult) fx.dayDemandMult *= o.dayDemandMult
+  if (o.group) {
+    fx.groupPerTick = o.group.guests / o.group.ticks
+    fx.groupUntil = here + o.group.ticks
+    fx.groupPriceUsd = o.group.perGuestUsd
+  }
+  if (o.releaseRace && nextEvents) nextEvents.raceHeld = false
+  return {
+    ...live, fx, nextEvents, pending: null,
+    repDelta: live.repDelta + o.reputationDelta,
+    acc: { ...live.acc, eventCost: live.acc.eventCost + o.costUsd, eventIncome: live.acc.eventIncome + o.incomeUsd },
+    cards: live.cards.map((c) => (c.id === card.id ? { ...c, answered: '', outcomeText: o.text } : c)),
+  }
+}
+
+/** Answer the pending card with one of its options. */
+export function answerCard(live: LiveDay, inp: SeasonInputs, optionId: string): LiveDay {
+  const card = live.cards.find((c) => c.id === live.pending)
+  if (!card) return live
+  const choice = card.options.some((o) => o.id === optionId) ? optionId : card.defaultOption
+  const o = resolveCard(card, choice, live.tick, totalTicks(live, inp), (live.seed ^ Math.imul(card.tick + 1, 0x85ebca6b)) >>> 0)
+  const next = applyOutcome(live, card, o)
+  return { ...next, cards: next.cards.map((c) => (c.id === card.id ? { ...c, answered: choice } : c)) }
+}
+
+/**
+ * Run the next tick. If an event card is due, the day pauses on it instead (live.pending
+ * is set) until it is answered.
+ */
+export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
+  if (isDayDone(live, inp) || live.pending) return live
+  const due = dueCard(live)
+  if (due) return { ...live, pending: due.id }
+
+  const D = SEASON.demand, P = SEASON.passes, M = SEASON.money
+  const t = live.tick
+  const night = t >= LIVE.dayTicks
+  const w = night ? NIGHT_W[t - LIVE.dayTicks] : DAY_W[t]
+  const prep = live.prep
+  const amen = inp.amenity ?? NEUTRAL_EFFECTS
+  const staff = inp.staff ?? FULL_STAFF
+  const finMod = financeModifiers(inp.financeDifficulty ?? 0.5)
+  const snowSys = inp.snowmaking ?? NO_SNOWMAKING
+  const fx = live.fx
+  const outage = t < fx.outageUntil ? fx.outageMult : 1
+  const condNow = Math.max(SEASON.conditions.min, prep.conditions - fx.groomerPenalty)
+  const condScale = prep.conditions > 0 ? condNow / prep.conditions : 1
+
+  // Capacity from the lifts running right now.
+  const factors = inp.lifts.map((_, i) => liftFactor(live, i, t))
+  const liftStaffing = staff.ratios.liftOps * (1 - STAFF_TUNING.mechanicsSpeedShare * (1 - staff.ratios.mechanics))
+  const running = inp.lifts.map((l, i) => ({ type: l.type, capacityPph: l.capacityPph * factors[i] }))
+  const overtime = live.ops.overtime ? LIVE.overtimeCapacity : 1
+  const lit = night ? amen.nightShare * (LIVE.nightTicks * LIVE.tickMin / 60 / SEASON.lifts.hoursPerDay) : 1
+  const comfort = Math.floor(liftComfortGuests(running) * liftStaffing * overtime * lit)
+  const liftCap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
+  const parkingCap = amen.parkingCapGuests
+
+  // Demand this tick. Pass holders ignore the day price; promos and the price touch day tickets only.
+  let wantDay: number, wantPass: number
+  if (!night) {
+    const priceFactor = Math.pow(D.referencePriceUsd / live.priceUsd, D.priceElasticity)
+    wantDay = w * (prep.locals * (1 - prep.passAdoption) + prep.visitors * live.promo.visitorMult)
+      * live.promo.dayDemandMult * priceFactor * fx.dayDemandMult * condScale * outage
+    wantPass = w * prep.locals * prep.passAdoption * P.frequencyBoost * condScale * outage
+  } else {
+    const market = prep.locals + prep.visitors
+    const priceFactor = Math.pow(LIVE.nightRefPriceUsd / live.nightPriceUsd, D.priceElasticity)
+    wantDay = w * market * LIVE.nightMarketShare * (1 - D.localShare * prep.passAdoption) * priceFactor * condScale * outage
+    wantPass = w * prep.locals * prep.passAdoption * P.frequencyBoost * LIVE.nightPassShare * condScale * outage
+  }
+  const wanted = wantDay + wantPass
+  const cap = Math.min(liftCap, parkingCap) * w
+  const guests = Math.min(wanted, cap)
+  const scale = wanted > 0 ? guests / wanted : 0
+  const dayG = wantDay * scale
+  const away = Math.max(0, wanted - guests)
+  const parkingAway = parkingCap < liftCap ? Math.max(0, Math.min(wanted, liftCap * w) - guests) : 0
+  // A booked group arrives over a few ticks at a flat price.
+  const group = !night && t < fx.groupUntil ? fx.groupPerTick : 0
+
+  const price = night ? live.nightPriceUsd : live.priceUsd
+  const ticketRev = dayG * price * (night ? 1 : live.promo.priceMult) + group * fx.groupPriceUsd
+  const allGuests = guests + group
+  const food = allGuests * M.foodPerGuestUsd * amen.foodMult
+  const extras = (dayG + group) * (amen.extrasPerDayGuestUsd - amen.lessonsPerDayGuestUsd * (1 - staff.ratios.instructors))
+
+  // Costs accrue every tick: fixed running costs by the hour, lifts only while running.
+  const ticks = night ? LIVE.nightTicks : LIVE.dayTicks
+  const liftDaily = inp.lifts.reduce((s, l, i) => s + M.liftDailyCostUsd[l.type] * (live.lifts[i] === 'slow' ? LIVE.slowCost : factors[i] > 0 ? 1 : 0), 0)
+  let cost: number
+  if (!night) {
+    const payroll = staff.payrollUsd * (1 + (live.ops.overtime ? LIVE.overtimePayrollPremium : 0))
+    cost = (finMod.costs * (M.overheadOpenUsd + liftDaily + inp.trailCount * M.groomPerTrailUsd + amen.dailyCostUsd) + payroll
+      + (prep.snowmaking ? snowSys.runCostUsd : 0) + prep.pushCostUsd) / ticks + finMod.costs * allGuests * M.variableCostPerGuestUsd
+  } else {
+    cost = (amen.nightCostUsd + staff.payrollUsd * 0.1 + finMod.costs * liftDaily * amen.nightShare * 0.5) / ticks
+      + finMod.costs * allGuests * M.variableCostPerGuestUsd
+  }
+
+  // Lift line: guests on the hill against the lift capacity right now.
+  const stay = night ? LIVE.nightStayTicks : LIVE.dayStayTicks
+  const session = live.rows.filter((r) => (night ? r.tick >= LIVE.dayTicks : r.tick < LIVE.dayTicks))
+  const onHill = sum(session.slice(-(stay - 1)).map((r) => r.arrived)) + allGuests
+  const peak = night ? NIGHT_PEAK : DAY_PEAK
+  const load = comfort > 0 ? onHill / (comfort * peak) : 4
+  const queueMin = Math.round(Math.max(0, load - 0.7) * 25)
+
+  const revenue = ticketRev + food + extras
+  const row: LiveTick = {
+    tick: t, arrived: allGuests, onHill: Math.round(onHill), queueMin, turnedAway: away, revenueUsd: Math.round(revenue),
+    lifts: factors.filter((f) => f > 0).length, priceUsd: price,
+  }
+  const a = live.acc
+  const acc: Acc = {
+    ...a,
+    guests: a.guests + allGuests, dayGuests: a.dayGuests + dayG + group, wanted: a.wanted + wanted + group,
+    parkingAway: a.parkingAway + parkingAway, ticketRev: a.ticketRev + ticketRev, food: a.food + food, extras: a.extras + extras,
+    cost: a.cost + cost, peakWait: night ? a.peakWait : Math.max(a.peakWait, queueMin),
+    nightGuests: a.nightGuests + (night ? allGuests : 0), nightRev: a.nightRev + (night ? revenue : 0),
+  }
+  return { ...live, tick: t + 1, rows: [...live.rows, row], acc }
+}
+
+/** Auto-answer every card with its default option and play the rest of the day. */
+export function runToEnd(live: LiveDay, inp: SeasonInputs): LiveDay {
+  let l = live
+  for (let guard = 0; guard < 200 && !isDayDone(l, inp); guard++) {
+    l = tickLiveDay(l, inp)
+    if (l.pending) l = answerCard(l, inp, '')
+  }
+  return l
+}
+
+/** Compile the finished day into the season state and the day's result. */
+export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs): { season: SeasonState; result: DayResult } {
+  const prep = live.prep
+  const R = SEASON.reputation
+  const a = live.acc
+  const open = prep.open
+  const guests = Math.round(a.guests)
+  const dayTicketGuests = Math.round(a.dayGuests)
+  const passVisits = guests - dayTicketGuests
+  const waitMin = open ? a.peakWait : 0
+  const conditions = Math.max(SEASON.conditions.min, prep.conditions - live.fx.groomerPenalty)
+
+  const ticketRevenueUsd = Math.round(a.ticketRev)
+  const foodRevenueUsd = Math.round(a.food)
+  const extrasRevenueUsd = Math.round(a.extras)
+  const eventCostUsd = Math.round(a.eventCost)
+  const eventIncomeUsd = Math.round(a.eventIncome)
+  const marketingUsd = open ? live.promo.marketingUsd : 0
+  const costUsd = (open ? Math.round(a.cost) : prep.closedCostUsd) + eventCostUsd + marketingUsd
+
+  let reputation = s.reputation
+  if (open && guests > 0) {
+    const experience = clamp(
+      1 + R.conditionsWeight * (conditions - 1) - (waitMin / 10) * R.waitPenaltyPer10Min + (inp.difficultyKinds - 2) * R.varietyBonus,
+      R.min, R.max,
+    )
+    reputation = clamp(reputation + (experience - reputation) * R.dailyWeight, R.min, R.max)
+  }
+  reputation = clamp(reputation + live.repDelta, R.min, R.max)
+
+  const events: SeasonEvent[] = live.cards
+    .filter((c) => c.answered && !(c.event.kind === 'groupBooking' && c.answered === 'decline'))
+    .map((c) => ({ ...c.event, text: `${c.title}: ${c.outcomeText ?? ''}`.trim() }))
+
+  const result: DayResult = {
+    day: prep.day, date: prep.date, weekday: prep.weekday, holiday: prep.holiday,
+    newSnowIn: prep.newSnowIn, warm: prep.warm, baseIn: prep.baseIn, open, stormClosed: prep.stormClosed, conditions: Math.round(conditions * 100) / 100,
+    guests, dayTicketGuests, passVisits, turnedAway: Math.max(0, Math.round(a.wanted) - guests), parkingTurnedAway: Math.round(a.parkingAway), waitMin,
+    ticketPriceUsd: live.priceUsd,
+    ticketRevenueUsd, foodRevenueUsd, extrasRevenueUsd, costUsd,
+    netUsd: ticketRevenueUsd + foodRevenueUsd + extrasRevenueUsd + eventIncomeUsd - costUsd,
+    reputation: Math.round(reputation * 1000) / 1000,
+    snowmaking: prep.snowmaking,
+    events, eventCostUsd, eventIncomeUsd,
+    nightGuests: Math.round(a.nightGuests), nightRevenueUsd: Math.round(a.nightRev), marketingUsd,
+  }
+  return {
+    season: {
+      ...s, day: s.day + 1, baseIn: prep.baseIn, reputation, rngState: prep.rngStateAfter,
+      events: live.nextEvents ?? s.events, days: [...s.days, result],
+    },
+    result,
+  }
+}
+
+/** Default context for a plain day: the season's current price, no plans, no campaigns. */
+export const plainContext = (s: SeasonState): LiveContext => ({ ops: {}, promo: NO_PROMO, priceUsd: s.ticketPriceUsd, nightPriceUsd: LIVE.nightRefPriceUsd })
+
+// ---- player controls (each returns a new LiveDay) ----
+
+export const setLivePrice = (live: LiveDay, priceUsd: number): LiveDay => ({ ...live, priceUsd: clamp(Math.round(priceUsd), 10, 250) })
+export const setLiveNightPrice = (live: LiveDay, priceUsd: number): LiveDay => ({ ...live, nightPriceUsd: clamp(Math.round(priceUsd), 10, 250) })
+export const setLiftMode = (live: LiveDay, lift: number, mode: LiftMode): LiveDay => ({ ...live, lifts: live.lifts.map((m, i) => (i === lift ? mode : m)) })
+/** The night session can be switched until it starts. */
+export const setLiveNight = (live: LiveDay, on: boolean): LiveDay => (live.tick <= LIVE.dayTicks ? { ...live, night: on } : live)
+

@@ -15,11 +15,12 @@
  */
 import { NEUTRAL_EFFECTS, type AmenityEffects } from './amenities'
 import type { LiftType } from './build'
-import { NO_SNOWMAKING, SNOWMAKING, effectiveBase, type SnowmakingEffects } from './snowmaking'
-import { FULL_STAFF, STAFF_TUNING, type StaffEffects } from './staff'
+import { NO_SNOWMAKING, SNOWMAKING, type SnowmakingEffects } from './snowmaking'
+import { FULL_STAFF, type StaffEffects } from './staff'
 import { financeModifiers, snowModifiers } from './difficultySettings'
-import { newEventState, rollDay, type EventState, type SeasonEvent } from './events'
+import { newEventState, type EventState, type SeasonEvent } from './events'
 import { createRng } from './rng'
+import { finishLiveDay, plainContext, runToEnd, startLiveDay, type LiveContext } from './liveDay'
 
 export const SEASON = {
   /** First possible day (month is 0-based) and season length. */
@@ -172,6 +173,11 @@ export interface DayResult {
   eventCostUsd: number
   /** Race fees (included in netUsd). */
   eventIncomeUsd: number
+  /** Night session (included in guests and revenue above). */
+  nightGuests?: number
+  nightRevenueUsd?: number
+  /** Campaign costs paid today (included in costUsd). */
+  marketingUsd?: number
 }
 
 export interface SeasonState {
@@ -251,6 +257,8 @@ export function isHoliday(d: Date): boolean {
   return false
 }
 
+export const dayFactorOf = (d: Date) => dayFactor(d)
+
 function dayFactor(d: Date): number {
   const D = SEASON.demand
   const w = d.getUTCDay()
@@ -258,6 +266,8 @@ function dayFactor(d: Date): number {
 }
 
 /** Demand multiplier for the resort's size, terrain variety and access (no price, snow or day). */
+export const appealOf = (inp: SeasonInputs) => appeal(inp)
+
 function appeal(inp: SeasonInputs): number {
   const D = SEASON.demand
   const access = clamp(1.6 - inp.driveToMetroMin / 150, 0.2, 1.4)
@@ -342,123 +352,13 @@ export function conditionsScore(baseIn: number, recentSnowIn: number, warm: bool
   return Math.round(clamp(0.5 + 0.5 * cover + powder - (warm ? C.warmPenalty : 0), C.min, C.max) * 100) / 100
 }
 
-export function simulateDay(s: SeasonState, inp: SeasonInputs): { season: SeasonState; result: DayResult } {
-  const rng = createRng(s.rngState)
-  const W = SEASON.weather, D = SEASON.demand, P = SEASON.passes, M = SEASON.money
-  const date = seasonDate(s.year, s.day)
-  const progress = s.day / SEASON.lengthDays
-  const snowMod = snowModifiers(inp.snowDifficulty ?? 0.5)
-  const finMod = financeModifiers(inp.financeDifficulty ?? 0.5)
-
-  // Weather.
-  let newSnowIn = 0
-  if (rng.next() < W.stormChance) {
-    const mean = s.expectedSnowIn / (SEASON.lengthDays * W.stormChance)
-    newSnowIn = Math.round(-Math.log(1 - rng.next()) * mean)
-  }
-  const warm = rng.next() < lerp(W.warmChance[0], W.warmChance[1], progress) * snowMod.warmChance
-  let baseIn = s.baseIn + newSnowIn * W.settleRatio
-  if (warm) baseIn -= lerp(W.warmMeltIn[0], W.warmMeltIn[1], rng.next())
-  const reachedOpening = s.day >= s.openingDay
-  if (reachedOpening) baseIn = Math.max(baseIn, W.baseFloorIn)
-  baseIn = Math.max(0, Math.round(baseIn * 10) / 10)
-  const stormClosed = reachedOpening && rng.next() < W.stormClosureChance
-  const open = reachedOpening && !stormClosed && inp.lifts.length > 0 && inp.trailCount > 0
-  const recentSnow = newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0)
-  const staff = inp.staff ?? FULL_STAFF
-  // Breakdowns and events (separate RNG stream; only on open days).
-  const ev = open && !inp.noEvents && s.events
-    ? rollDay(
-        s.events.liftDownDays.length === inp.lifts.length ? s.events : { ...s.events, liftDownDays: inp.lifts.map((_, i) => s.events!.liftDownDays[i] ?? 0) },
-        {
-          liftNames: inp.liftNames ?? inp.lifts.map((_, i) => `Lift ${i + 1}`),
-          mechanicsRatio: staff.ratios.mechanics, patrolRatio: staff.ratios.patrol,
-          expectedGuests: s.days.at(-1)?.guests ?? 0, conditions: conditionsScore(baseIn, newSnowIn + (s.days.at(-1)?.newSnowIn ?? 0), warm),
-          lastWaitMin: s.days.at(-1)?.waitMin ?? 0,
-          weekend: date.getUTCDay() === 0 || date.getUTCDay() === 6,
-          hasBlack: inp.hasBlack ?? inp.difficultyKinds >= 3, trailCount: inp.trailCount,
-        },
-        createRng(s.events.rngState),
-      )
-    : null
-  const snowSys = inp.snowmaking ?? NO_SNOWMAKING
-  // The system runs before opening, for two weeks after, and whenever the base is thin.
-  const snowmakingRuns = snowSys.coverage > 0 && !warm
-    && (s.day < s.openingDay + SNOWMAKING.runDaysAfterOpening || baseIn < SNOWMAKING.madeBaseIn)
-  // Groomer shortages make the snow worse.
-  const conditions = Math.max(SEASON.conditions.min,
-    Math.round((conditionsScore(effectiveBase(baseIn, snowSys.coverage), recentSnow, warm) - STAFF_TUNING.groomPenalty * (1 - staff.ratios.groomers)
-      - (ev ? ev.fx.conditionsPenalty : 0)) * 100) / 100)
-
-  // Demand: locals (some hold passes) and visitors.
-  const holiday = isHoliday(date)
-  const noise = lerp(D.noise[0], D.noise[1], rng.next())
-  const amen = inp.amenity ?? NEUTRAL_EFFECTS
-  const market = open ? D.marketBase * dayFactor(date) * conditions * appeal(inp) * s.reputation * noise * (ev ? ev.fx.guestMult : 1) : 0
-  const priceFactor = Math.pow(D.referencePriceUsd / s.ticketPriceUsd, D.priceElasticity)
-  const locals = market * D.localShare
-  const visitors = market - locals
-  const wantDay = (locals * (1 - s.passAdoption) + visitors) * priceFactor * (ev ? ev.fx.dayDemandMult : 1)
-  const wantPass = locals * s.passAdoption * P.frequencyBoost
-  const wanted = wantDay + wantPass
-
-  // Lift operators run lifts; mechanics keep them at full speed.
-  const liftStaffing = staff.ratios.liftOps * (1 - STAFF_TUNING.mechanicsSpeedShare * (1 - staff.ratios.mechanics))
-  const runningLifts = ev ? inp.lifts.filter((_, i) => !ev.fx.liftsDown.has(i)) : inp.lifts
-  const comfort = Math.floor(liftComfortGuests(runningLifts) * liftStaffing)
-  const liftCap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
-  const cap = Math.min(liftCap, amen.parkingCapGuests)
-  const guests = Math.round(Math.min(wanted, cap))
-  const parkingTurnedAway = amen.parkingCapGuests < liftCap ? Math.max(0, Math.round(Math.min(wanted, liftCap)) - guests) : 0
-  const scale = wanted > 0 ? guests / wanted : 0
-  const dayTicketGuests = Math.round(wantDay * scale)
-  const passVisits = guests - dayTicketGuests
-  const turnedAway = Math.max(0, Math.round(wanted) - guests)
-  const load = comfort > 0 ? guests / comfort : 0
-  const waitMin = open ? Math.round(Math.max(0, load - 0.7) * 25) : 0
-
-  // Money (pass revenue is booked when the season starts, not per day).
-  const ticketRevenueUsd = dayTicketGuests * s.ticketPriceUsd
-  const foodRevenueUsd = Math.round(guests * M.foodPerGuestUsd * amen.foodMult)
-  const extrasRevenueUsd = Math.round(dayTicketGuests
-    * (amen.extrasPerDayGuestUsd - amen.lessonsPerDayGuestUsd * (1 - staff.ratios.instructors)))
-  const costUsd = Math.round(finMod.costs * (open
-    ? M.overheadOpenUsd + inp.lifts.reduce((t, l) => t + M.liftDailyCostUsd[l.type], 0) + inp.trailCount * M.groomPerTrailUsd
-      + guests * M.variableCostPerGuestUsd + amen.dailyCostUsd
-    : M.overheadClosedUsd) + staff.payrollUsd + (snowmakingRuns ? snowSys.runCostUsd : 0)) + (ev ? ev.fx.costUsd : 0)
-
-  // Reputation drifts toward the day's guest experience (conditions, lines, variety).
-  const R = SEASON.reputation
-  let reputation = s.reputation
-  if (open && guests > 0) {
-    const experience = clamp(
-      1 + R.conditionsWeight * (conditions - 1) - (waitMin / 10) * R.waitPenaltyPer10Min + (inp.difficultyKinds - 2) * R.varietyBonus,
-      R.min, R.max,
-    )
-    reputation = clamp(reputation + (experience - reputation) * R.dailyWeight, R.min, R.max)
-  }
-  if (ev) reputation = clamp(reputation + ev.fx.reputationDelta, R.min, R.max)
-  const eventCostUsd = ev ? ev.fx.costUsd : 0
-  const eventIncomeUsd = ev ? ev.fx.incomeUsd : 0
-
-  const result: DayResult = {
-    day: s.day,
-    date: date.toISOString().slice(0, 10),
-    weekday: date.getUTCDay(), holiday, newSnowIn, warm, baseIn, open, stormClosed, conditions,
-    guests, dayTicketGuests, passVisits, turnedAway, parkingTurnedAway, waitMin,
-    ticketPriceUsd: s.ticketPriceUsd,
-    ticketRevenueUsd, foodRevenueUsd, extrasRevenueUsd, costUsd,
-    netUsd: ticketRevenueUsd + foodRevenueUsd + extrasRevenueUsd + eventIncomeUsd - costUsd,
-    reputation: Math.round(reputation * 1000) / 1000,
-    snowmaking: snowmakingRuns,
-    events: ev ? ev.fx.events : [],
-    eventCostUsd,
-    eventIncomeUsd,
-  }
-  return {
-    season: { ...s, day: s.day + 1, baseIn, reputation, rngState: rng.state(), events: ev ? ev.state : s.events, days: [...s.days, result] },
-    result,
-  }
+/**
+ * Play one whole day with default choices (no live decisions): the batch path used by
+ * the auto-player and tests. The live screen uses liveDay.ts directly.
+ */
+export function simulateDay(s: SeasonState, inp: SeasonInputs, ctx?: Partial<LiveContext>): { season: SeasonState; result: DayResult } {
+  const live = runToEnd(startLiveDay(s, inp, { ...plainContext(s), noCards: inp.noEvents, ...ctx }), inp)
+  return finishLiveDay(live, s, inp)
 }
 
 export const seasonOver = (s: SeasonState) => s.day >= SEASON.lengthDays
