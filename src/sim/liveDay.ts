@@ -130,7 +130,21 @@ interface Acc {
   peakWait: number
   nightGuests: number
   nightRev: number
+  /** Where the day's running costs went (absent on a day saved before this was tracked). */
+  parts?: CostParts
 }
+
+export interface CostParts {
+  payroll: number
+  lifts: number
+  /** Admin, utilities, grooming and base-area running costs. */
+  overhead: number
+  snowmaking: number
+  /** Food supplies, card fees and wear per guest. */
+  guests: number
+  lights: number
+}
+const NO_PARTS: CostParts = { payroll: 0, lifts: 0, overhead: 0, snowmaking: 0, guests: 0, lights: 0 }
 
 export interface LiveFx {
   /** Lift i is closed while tick < liftUntil[i] (a breakdown). */
@@ -309,7 +323,9 @@ function applyOutcome(live: LiveDay, card: EventCard, o: CardOutcome): LiveDay {
     ...live, fx, nextEvents, pending: null,
     repDelta: live.repDelta + o.reputationDelta,
     acc: { ...live.acc, eventCost: live.acc.eventCost + o.costUsd, eventIncome: live.acc.eventIncome + o.incomeUsd },
-    cards: live.cards.map((c) => (c.id === card.id ? { ...c, answered: '', outcomeText: o.text } : c)),
+    cards: live.cards.map((c) => (c.id === card.id
+      ? { ...c, answered: '', outcomeText: o.text, outcome: { costUsd: o.costUsd, incomeUsd: o.incomeUsd, reputationDelta: o.reputationDelta } }
+      : c)),
   }
 }
 
@@ -388,14 +404,25 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   // Costs accrue every tick: fixed running costs by the hour, lifts only while running.
   const ticks = night ? LIVE.nightTicks : LIVE.dayTicks
   const liftDaily = inp.lifts.reduce((s, l, i) => s + M.liftDailyCostUsd[l.type] * (live.lifts[i] === 'slow' ? LIVE.slowCost : factors[i] > 0 ? 1 : 0), 0)
-  let cost: number
-  if (!night) {
-    const payroll = staff.payrollUsd * (1 + (live.ops.overtime ? LIVE.overtimePayrollPremium : 0))
-    cost = (finMod.costs * (M.overheadOpenUsd + liftDaily + inp.trailCount * M.groomPerTrailUsd + amen.dailyCostUsd) + payroll
-      + (prep.snowmaking ? snowSys.runCostUsd : 0) + prep.pushCostUsd) / ticks + finMod.costs * allGuests * M.variableCostPerGuestUsd
-  } else {
-    cost = (amen.nightCostUsd + staff.payrollUsd * 0.1 + finMod.costs * liftDaily * amen.nightShare * 0.5) / ticks
-      + finMod.costs * allGuests * M.variableCostPerGuestUsd
+  const guestCost = finMod.costs * allGuests * M.variableCostPerGuestUsd
+  const tickParts: CostParts = !night
+    ? {
+        payroll: (staff.payrollUsd * (1 + (live.ops.overtime ? LIVE.overtimePayrollPremium : 0))) / ticks,
+        lifts: (finMod.costs * liftDaily) / ticks,
+        overhead: (finMod.costs * (M.overheadOpenUsd + inp.trailCount * M.groomPerTrailUsd + amen.dailyCostUsd)) / ticks,
+        snowmaking: ((prep.snowmaking ? snowSys.runCostUsd : 0) + prep.pushCostUsd) / ticks,
+        guests: guestCost, lights: 0,
+      }
+    : {
+        payroll: (staff.payrollUsd * 0.1) / ticks,
+        lifts: (finMod.costs * liftDaily * amen.nightShare * 0.5) / ticks,
+        overhead: 0, snowmaking: 0, guests: guestCost, lights: amen.nightCostUsd / ticks,
+      }
+  const cost = tickParts.payroll + tickParts.lifts + tickParts.overhead + tickParts.snowmaking + tickParts.guests + tickParts.lights
+  const prevParts = live.acc.parts ?? NO_PARTS
+  const parts: CostParts = {
+    payroll: prevParts.payroll + tickParts.payroll, lifts: prevParts.lifts + tickParts.lifts, overhead: prevParts.overhead + tickParts.overhead,
+    snowmaking: prevParts.snowmaking + tickParts.snowmaking, guests: prevParts.guests + tickParts.guests, lights: prevParts.lights + tickParts.lights,
   }
 
   // Lift line: guests on the hill against the lift capacity right now.
@@ -417,7 +444,7 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
     guests: a.guests + allGuests, dayGuests: a.dayGuests + dayG + group, wanted: a.wanted + wanted + group,
     parkingAway: a.parkingAway + parkingAway, ticketRev: a.ticketRev + ticketRev, food: a.food + food, extras: a.extras + extras,
     cost: a.cost + cost, peakWait: night ? a.peakWait : Math.max(a.peakWait, queueMin),
-    nightGuests: a.nightGuests + (night ? allGuests : 0), nightRev: a.nightRev + (night ? revenue : 0),
+    nightGuests: a.nightGuests + (night ? allGuests : 0), nightRev: a.nightRev + (night ? revenue : 0), parts,
   }
   return { ...live, tick: t + 1, rows: [...live.rows, row], acc }
 }
@@ -464,7 +491,7 @@ export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs):
 
   const events: SeasonEvent[] = live.cards
     .filter((c) => c.answered && !(c.event.kind === 'groupBooking' && c.answered === 'decline'))
-    .map((c) => ({ ...c.event, text: `${c.title}: ${c.outcomeText ?? ''}`.trim() }))
+    .map((c) => ({ ...c.event, ...(c.outcome ?? {}), text: `${c.title}: ${c.outcomeText ?? ''}`.trim() }))
 
   const result: DayResult = {
     day: prep.day, date: prep.date, weekday: prep.weekday, holiday: prep.holiday,
@@ -477,6 +504,13 @@ export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs):
     snowmaking: prep.snowmaking,
     events, eventCostUsd, eventIncomeUsd,
     nightGuests: Math.round(a.nightGuests), nightRevenueUsd: Math.round(a.nightRev), marketingUsd,
+    ...(open && a.parts ? {
+      costParts: {
+        payroll: Math.round(a.parts.payroll), lifts: Math.round(a.parts.lifts), overhead: Math.round(a.parts.overhead),
+        snowmaking: Math.round(a.parts.snowmaking), guests: Math.round(a.parts.guests), lights: Math.round(a.parts.lights),
+      },
+    } : {}),
+    ...(open ? { peakOnHill: Math.max(0, ...live.rows.map((r) => r.onHill)), hourly: live.rows.map((r) => Math.round(r.arrived)) } : {}),
   }
   return {
     season: {

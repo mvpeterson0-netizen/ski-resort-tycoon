@@ -26,6 +26,8 @@ export interface EventCard {
   /** Set once the player (or auto-answer) chose. */
   answered?: string
   outcomeText?: string
+  /** What the chosen option actually cost or earned (the event's own numbers are only the quote). */
+  outcome?: { costUsd: number; incomeUsd: number; reputationDelta: number }
 }
 
 /** What a chosen option does to the rest of the day and beyond. */

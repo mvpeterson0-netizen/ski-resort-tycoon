@@ -167,6 +167,16 @@ with a reduced off-season (building, hiring, financing, summer activities).
   Live decisions: ticket price (applies to later arrivals), lifts open/slow/closed (slow = half
   capacity, 70% cost), night on/off, event cards. **Pass holders are never affected by daily
   prices or promos.** Day-ticket weekend demand is already higher in the sim.
+- **End-of-day report (PROPOSAL awaiting owner adjustments; `src/ui/DayReport.tsx`):** after each
+  open day the live screen pauses on a report: net today (vs the season's average for that kind of
+  day), guests (day tickets / pass visits / night, busiest moment, lift line, turned away, reputation,
+  arrivals-by-half-hour chart), money in and out (costs split into payroll, lifts, overhead & grooming,
+  guest costs, snowmaking, lighting, marketing, repairs), conditions, what happened (cards with what
+  you paid), season so far and tomorrow's forecast/price/plans. A skip ends with a report covering the
+  days skipped. Closed days before opening pass without a report; "Auto-play days" turns reports off.
+  `DayResult` gained `costParts`, `peakOnHill`, `hourly`.
+- **Saves:** `parseSave` fills in anything newer builds added (night lighting, calendar, promos, live
+  day, base) for any version, so a save from before a feature existed never crashes a screen.
 - **Price calendar (`GameState.calendar`, v12):** weekday price = `ticketPriceUsd`; weekend (×1.15)
   and holiday (×1.30) default to a markup until the player sets them; night price $35; per-day
   plans (price override, night, overtime crew +15% lift capacity / +25% payroll, snowmaking push

@@ -131,3 +131,30 @@ describe('saves', () => {
     expect(back.live).toBeNull()
   })
 })
+
+describe('saves from before a building existed', () => {
+  it('fills in missing amenities (night lighting) and newer fields, whatever the save version', () => {
+    const g = built()
+    const old = JSON.parse(JSON.stringify(g))
+    delete old.amenities.lights
+    delete old.calendar
+    delete old.promos
+    delete old.live
+    delete old.base
+    delete old.villageUsd
+    const back = parseSave(old)!
+    expect(back.version).toBe(12)
+    expect(back.amenities.lights).toBe(0)
+    expect(back.amenities.parking).toBe(g.amenities.parking)
+    expect(back.calendar.night).toBe(PRICING.nightPriceUsd)
+    expect(back.promos).toEqual([])
+    expect(back.live).toBeNull()
+    expect(back.base).toBeNull()
+    expect(back.villageUsd).toBe(0)
+  })
+
+  it('keeps the levels a player already built', () => {
+    const g = { ...built(), amenities: { parking: 2, lodge: 3, rentals: 1, school: 2, housing: 1, lights: 1 } }
+    expect(parseSave(JSON.parse(JSON.stringify(g)))!.amenities).toEqual(g.amenities)
+  })
+})

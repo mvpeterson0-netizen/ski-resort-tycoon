@@ -249,6 +249,14 @@ export function parseSave(raw: unknown): GameState | null {
     g.version = GAME_STATE_VERSION
   }
   if (g.version !== GAME_STATE_VERSION) return null
+  // Fill in anything a newer build added that an older save of this version lacks (for example
+  // night lighting, which saves from before it existed do not have).
+  g.amenities = { ...NO_AMENITIES, ...(g.amenities ?? {}) }
+  g.calendar = { ...newCalendar(), ...(g.calendar ?? {}) }
+  g.promos = g.promos ?? []
+  g.live = g.live ?? null
+  g.base = g.base ?? null
+  g.villageUsd = g.villageUsd ?? 0
   if (!Array.isArray(g.trails) || !Array.isArray(g.lifts)) return null
   if (typeof g.siteId !== 'string' || typeof g.cashUsd !== 'number' || !Array.isArray(g.loans) || !Array.isArray(g.ownedParcels)) return null
   return g as GameState

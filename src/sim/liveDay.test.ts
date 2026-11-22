@@ -245,6 +245,25 @@ describe('event cards', () => {
     expect(rush.acc.guests).toBeGreaterThan(std.acc.guests)
   })
 
+  it('the day report lists what you paid for the option you chose, not the original quote', () => {
+    const { s, inp, live } = withCard(card('liftBreakdown'))
+    const r = finishLiveDay(runToEnd(answerCard(toCard(live, inp), inp, 'rush'), inp), s, inp).result
+    expect(r.events[0].costUsd).toBe(66_000)
+    expect(r.eventCostUsd).toBe(66_000)
+    expect(r.events[0].text).toMatch(/rush crew/i)
+  })
+
+  it('splits the running costs into parts that add up, and records the busiest moment and arrivals', () => {
+    const { s, inp } = saturday()
+    const r = simulateDay(s, inp).result
+    const cp = r.costParts!
+    const sumParts = cp.payroll + cp.lifts + cp.overhead + cp.snowmaking + cp.guests + cp.lights
+    expect(Math.abs(sumParts - (r.costUsd - r.eventCostUsd - (r.marketingUsd ?? 0)))).toBeLessThanOrEqual(6)
+    expect(r.hourly).toHaveLength(LIVE.dayTicks)
+    expect(Math.abs(r.hourly!.reduce((a, b) => a + b, 0) - r.guests)).toBeLessThanOrEqual(LIVE.dayTicks)
+    expect(r.peakOnHill).toBeGreaterThan(0)
+  })
+
   it('runToEnd answers every card with its default option', () => {
     const { s, inp, live } = withCard(card('lawsuit'))
     const r = finishLiveDay(runToEnd(live, inp), s, inp).result

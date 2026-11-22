@@ -178,6 +178,12 @@ export interface DayResult {
   nightRevenueUsd?: number
   /** Campaign costs paid today (included in costUsd). */
   marketingUsd?: number
+  /** Where the running costs went (the rest of costUsd is campaigns, repairs and settlements). */
+  costParts?: { payroll: number; lifts: number; overhead: number; snowmaking: number; guests: number; lights: number }
+  /** Most guests on the hill at once. */
+  peakOnHill?: number
+  /** Guests arriving in each half hour (9:00 on; night ticks follow). */
+  hourly?: number[]
 }
 
 export interface SeasonState {

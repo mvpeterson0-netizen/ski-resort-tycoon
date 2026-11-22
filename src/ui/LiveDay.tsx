@@ -11,6 +11,7 @@ import {
 } from '../sim'
 import { usd } from './format'
 import { MapView, RENDER_SCALE } from './MapView'
+import { DayReport } from './DayReport'
 import { SeasonSummary } from './Season'
 import { paintGround } from './village/art'
 import { drawResortScene } from './village/drawResort'
@@ -40,23 +41,25 @@ const liveNet = (l: LiveDay) => {
 }
 
 /** Play days without drawing them. Stops at a pending event card or the end of the season. */
-function fastForward(game: GameState, site: NonNullable<ReturnType<typeof siteById>>, maxDays: number): { game: GameState; days: number; last: DayResult | null } {
+function fastForward(game: GameState, site: NonNullable<ReturnType<typeof siteById>>, maxDays: number): { game: GameState; days: number; last: DayResult | null; results: DayResult[] } {
   let g = game
   let days = 0
   let last: DayResult | null = null
+  const results: DayResult[] = []
   while (days < maxDays && g.phase === 'season' && !g.bankrupt) {
     if (!g.live) g = startDay(g, site)
     for (let guard = 0; guard < 60 && g.live && !liveDayDone(g, site); guard++) {
       g = playTick(g, site)
-      if (g.live?.pending) return { game: g, days, last }
+      if (g.live?.pending) return { game: g, days, last, results }
     }
     if (!g.live) break
     const r = finishDay(g, site)
     g = r.game
     last = r.result
+    results.push(r.result)
     days++
   }
-  return { game: g, days, last }
+  return { game: g, days, last, results }
 }
 
 export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
@@ -66,9 +69,12 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const [t, setT] = useState<import('../sim').Terrain | null>(null)
   const { frame, ready, scene } = useResortScene(site.terrainId!, game, t)
   const [speed, setSpeed] = useState<number>(4)
-  const [auto, setAuto] = useState(true)
+  // Auto-play skips the end-of-day report; by default each open day ends with one.
+  const [auto, setAuto] = useState(false)
   const [tab, setTab] = useState<'controls' | 'forecast' | 'season'>('controls')
   const [last, setLast] = useState<DayResult | null>(null)
+  /** Days covered by the report on screen (one day, or the days of a skip). */
+  const [reportDays, setReportDays] = useState<DayResult[] | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [skipMenu, setSkipMenu] = useState(false)
   const live = game.live
@@ -85,7 +91,8 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const needStart = game.phase === 'season' && !live
   useEffect(() => {
     if (!needStart) return
-    const wait = last && auto && speed > 0 ? Math.max(500, 2400 / speed) : last ? 1e9 : 0
+    // Closed days (before opening) pass by themselves; open days wait for the report unless auto-playing.
+    const wait = last && (auto || !last.open) && speed > 0 ? Math.max(500, 2400 / speed) : last ? 1e9 : 0
     const id = setTimeout(() => { setToast(null); onChange(startDay(gameRef.current, site)) }, wait)
     return () => clearTimeout(id)
   }, [needStart, last, auto, speed, onChange, site])
@@ -98,21 +105,26 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
       if (liveDayDone(g, site)) {
         const r = finishDay(g, site)
         setLast(r.result)
+        setReportDays(r.result.open && !auto ? [r.result] : null)
         onChange(r.game)
       } else {
         onChange(playTick(g, site))
       }
     }, (TICK_SEC_AT_1X * 1000) / speed / (done ? 3 : 1))
     return () => clearTimeout(id)
-  }, [live, speed, pending, done, onChange, site])
+  }, [live, speed, pending, done, auto, onChange, site])
 
   const skip = (mode: 'day' | 'week' | 'season') => {
     setSkipMenu(false)
     const r = fastForward(gameRef.current, site, mode === 'day' ? 1 : mode === 'week' ? 7 : 999)
     if (r.last) setLast(r.last)
+    // A skip ends with a report covering the days skipped (unless an event stopped it).
+    setReportDays(r.days > 0 && !r.game.live?.pending ? r.results : null)
     setToast(r.game.live?.pending ? `Skipped ${r.days} day${r.days === 1 ? '' : 's'}: an event needs you` : `Skipped ${r.days} day${r.days === 1 ? '' : 's'}`)
     onChange(r.game)
   }
+
+  const nextDay = () => { setReportDays(null); setToast(null); onChange(startDay(gameRef.current, site)) }
 
   const edit = (f: (l: LiveDay) => LiveDay) => live && onChange({ ...game, live: f(live) })
   const row = live?.rows.at(-1)
@@ -282,16 +294,24 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
           <button className="btn" onClick={() => skip('day')}>Skip the day</button>
           <button className="btn" onClick={() => skip('week')}>Skip a week</button>
           <button className="btn" onClick={() => { if (window.confirm('Fast-forward the rest of the season? It stops if an event needs you.')) skip('season') }}>Skip the season</button>
-          <label className="auto-toggle"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto next day</label>
+          <label className="auto-toggle"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto-play days (no report)</label>
         </div>
       )}
       {toast && <p className="toast" onClick={() => setToast(null)}>{toast}</p>}
-      {!live && last && !toast && (
+      {!live && last && !toast && !reportDays && (
         <div className="day-summary">
           <b>{dateLabel(last.date)}</b>
           <span>{last.open ? `${last.guests.toLocaleString()} skiers · ${money(last.netUsd)}` : 'Closed'}</span>
-          {!auto && <button className="btn primary" onClick={() => onChange(startDay(game, site))}>Next day ▸</button>}
+          {!auto && <button className="btn primary" onClick={nextDay}>Next day ▸</button>}
         </div>
+      )}
+      {!live && reportDays && reportDays.length > 0 && game.phase === 'season' && (
+        <DayReport
+          days={reportDays} game={game}
+          onNext={nextDay}
+          onSkipWeek={() => { setReportDays(null); skip('week') }}
+          onCalendar={onCalendar}
+        />
       )}
       {pending && live && (
         <div className="card-overlay" role="dialog" aria-label={pending.title}>
