@@ -162,6 +162,8 @@ export interface LiveTick {
   onHill: number
   queueMin: number
   turnedAway: number
+  /** Demand this tick as a share of the parking lot's room for it (incl. shuttle); 1 = full, above 1 = people turned away. Absent when the lot has no limit (or in older saves). */
+  lotPct?: number
   revenueUsd: number
   /** Lifts running. */
   lifts: number
@@ -586,6 +588,7 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const revenue = ticketRev + food + extras + apresRev
   const row: LiveTick = {
     tick: t, arrived: allGuests, onHill: Math.round(onHill), queueMin, turnedAway: away, revenueUsd: Math.round(revenue),
+    ...(Number.isFinite(parkingCap) && parkingCap * w > 0 ? { lotPct: wanted / (parkingCap * w) } : {}),
     lifts: factors.filter((f) => f > 0).length, priceUsd: price,
   }
   const a = live.acc

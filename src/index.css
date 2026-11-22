@@ -297,6 +297,8 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .skip-sheet { top: auto; bottom: 38px; right: 8px; z-index: 4; }
 .auto-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; padding: 4px 6px; }
 .hud-chips .neg { color: var(--danger); }
+.hud-chips .lot-near { background: #f6d98a; color: #5c4200; }
+.hud-chips .lot-full { background: var(--danger); color: #fff; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* Calendar and marketing */

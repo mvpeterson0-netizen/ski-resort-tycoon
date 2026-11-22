@@ -342,6 +342,11 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         <div className="hud-chips">
           {live && live.prep.open && <span>Skiers {Math.round(live.acc.guests).toLocaleString()}</span>}
           {row && <span>On hill {row.onHill.toLocaleString()}</span>}
+          {row && row.lotPct !== undefined && (
+            <span className={row.lotPct >= 1 ? 'lot-full' : row.lotPct >= 0.9 ? 'lot-near' : ''} title="Parking lot: demand against the room in the lot (incl. shuttle)">
+              Lot {Math.round(row.lotPct * 100)}%{row.lotPct >= 1 ? ' FULL' : ''}
+            </span>
+          )}
           {row && <span>Line {row.queueMin} min</span>}
           {live && live.prep.open && <span className={liveNet(live) < 0 ? 'neg' : ''}>Today {money(liveNet(live))}</span>}
           {live && <span>Snow {live.prep.baseIn}″{live.prep.newSnowIn > 0 ? ` · +${live.prep.newSnowIn}″` : ''}</span>}
