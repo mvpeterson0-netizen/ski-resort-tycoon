@@ -6,6 +6,9 @@ import {
 import { MapView, RENDER_SCALE } from './MapView'
 import { renderDifficultyLayer } from './difficultyLayer'
 import { usd } from './format'
+import { drawLift as drawLiftArt, drawTrailSwath, paintGround } from './village/art'
+import { drawResortScene } from './village/drawResort'
+import { useResortScene } from './village/useScene'
 
 const S = RENDER_SCALE
 const C = (v: number) => (v + 0.5) * S // cell centre -> base-image pixels
@@ -77,6 +80,7 @@ export function BuildScreen({ game, onChange, onBack }: {
   const lift: LiftPlan | null =
     terrain && stations.length === 2 ? planLift(terrain, liftType, stations[0], stations[1], parcels, game.ownedParcels) : null
 
+  const { frame, scene } = useResortScene(site.terrainId!, game, terrain)
   const reset = () => { setStroke([]); setTrail(null); setStations([]) }
   const switchMode = (m: Mode) => { reset(); setMessage(null); setMode(m) }
 
@@ -96,6 +100,10 @@ export function BuildScreen({ game, onChange, onBack }: {
     <MapView
       terrainId={site.terrainId!}
       onBack={onBack}
+      base={paintGround}
+      zoomBoost={3}
+      // Open on the base village so new lifts and trails are drawn out from it.
+      focus={frame ? { x: frame.v[0], y: frame.v[1], metresAcross: 900 } : undefined}
       drawing={mode === 'trail'} // a new stroke replaces any pending trail
       onTerrain={(t) => { setTerrain(t); setParcels(computeParcels(t)); setLayer(renderDifficultyLayer(t)) }}
       onStrokeMove={(pts) => setStroke(pts)}
@@ -111,26 +119,46 @@ export function BuildScreen({ game, onChange, onBack }: {
         setStations((s) => (s.length >= 2 ? [[x, y]] : [...s, [x, y]]))
       }}
       overlay={(ctx, scale) => {
-        // Dim land the player does not own.
-        ctx.fillStyle = 'rgba(60,50,40,0.32)'
-        for (const p of parcels) {
-          const r: [number, number, number, number] = [p.x0 * S, p.y0 * S, (p.x1 - p.x0) * S, (p.y1 - p.y0) * S]
-          if (!game.ownedParcels.includes(p.id)) { ctx.fillRect(...r); continue }
-          if (showRuns && layer) {
-            // Slope-based run difficulty on owned land, to help place trails.
+        const k = S / (terrain?.cellM ?? 10)
+        const px = ([x, y]: Pt): [number, number] => [C(x), C(y)]
+        // Slope-based run difficulty on owned land (under trees, trails and buildings).
+        if (showRuns && layer) {
+          for (const p of parcels) {
+            if (!game.ownedParcels.includes(p.id)) continue
             ctx.save()
             ctx.beginPath()
-            ctx.rect(...r)
+            ctx.rect(p.x0 * S, p.y0 * S, (p.x1 - p.x0) * S, (p.y1 - p.y0) * S)
             ctx.clip()
             ctx.imageSmoothingEnabled = false
             ctx.drawImage(layer, 0, 0, layer.width * S, layer.height * S)
             ctx.restore()
           }
         }
-        for (const t of game.trails) drawTrail(ctx, scale, t.points, DIFF_COLOR[t.difficulty])
-        for (const l of game.lifts) drawLift(ctx, scale, l.bottom, l.top)
+        // The resort as built: roads, base village, existing trails and lifts.
+        const sc = scene(0.2)
+        if (sc) drawResortScene(ctx, scale, sc)
+        // Dim land the player does not own.
+        ctx.fillStyle = 'rgba(60,50,40,0.32)'
+        for (const p of parcels) {
+          if (!game.ownedParcels.includes(p.id)) ctx.fillRect(p.x0 * S, p.y0 * S, (p.x1 - p.x0) * S, (p.y1 - p.y0) * S)
+        }
+        // New work, drawn on top: translucent until you confirm it.
         if (stroke.length > 1) drawTrail(ctx, scale, stroke, '#7a6a55', true)
-        if (trail) drawTrail(ctx, scale, trail.points, trail.problems.length ? '#b03a2e' : DIFF_COLOR[trail.difficulty], true)
+        if (trail) {
+          if (!trail.problems.length) {
+            ctx.save()
+            ctx.globalAlpha = 0.7
+            drawTrailSwath(ctx, trail.points.map(px), k, trail.difficulty)
+            ctx.restore()
+          }
+          drawTrail(ctx, scale, trail.points, trail.problems.length ? '#b03a2e' : DIFF_COLOR[trail.difficulty], true)
+        }
+        if (lift) {
+          ctx.save()
+          ctx.globalAlpha = 0.75
+          drawLiftArt(ctx, px(lift.bottom), px(lift.top), k, lift.type, 0, true)
+          ctx.restore()
+        }
         if (stations.length) drawLift(ctx, scale, stations[0], stations[1] ?? null, true)
       }}
       panel={

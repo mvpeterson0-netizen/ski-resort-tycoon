@@ -12,9 +12,10 @@ import {
 import { effectLine } from './amenityText'
 import { usd } from './format'
 import { MapView } from './MapView'
-import { paintGround, paintTreeLayer, plantTrees } from './village/art'
+import { paintGround } from './village/art'
 import { drawResortScene, ITEM_NAMES } from './village/drawResort'
-import { clearTrees, useRoads, useSprites, villageFrame, villageItems, type VillageItem } from './village/layout'
+import type { VillageItem } from './village/layout'
+import { useResortScene } from './village/useScene'
 
 export type ResortTab = 'build' | 'village' | 'prices' | 'staff' | 'money'
 
@@ -26,8 +27,7 @@ export function ResortView({ game, site, onChange, onTab, onSeason, onLand, onSe
 }) {
   const terrainId = site.terrainId!
   const [t, setT] = useState<Terrain | null>(null)
-  const roads = useRoads(terrainId)
-  const sprites = useSprites()
+  const { roads, frame, vi, ready, scene } = useResortScene(terrainId, game, t)
   const [selKey, setSelKey] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -42,14 +42,6 @@ export function ResortView({ game, site, onChange, onTab, onSeason, onLand, onSe
     const [b] = p ? suggestBaseSites(t, p, 1, roads) : []
     if (b) onChange(placeBase(game, toPlacement(b)))
   }, [t, roads, game, site, onChange])
-
-  const frame = useMemo(() => (t && game.base ? villageFrame(t, game.base) : null), [t, game.base])
-  const vi = useMemo(() => (t && frame ? villageItems(t, frame, game.amenities, game.lifts) : null), [t, frame, game.amenities, game.lifts])
-  const trees = useMemo(() => (t ? plantTrees(t) : null), [t])
-  const layer = useMemo(() => (t && trees ? paintTreeLayer(t, trees) : null), [t, trees])
-  const kept = useMemo(() => (t && trees && roads
-    ? clearTrees(t, trees, roads, game.trails, game.lifts, frame && vi ? { F: frame, ...vi, parking: game.amenities.parking } : null)
-    : null), [t, trees, roads, game.trails, game.lifts, frame, vi, game.amenities.parking])
 
   // Tappable things: buildings, lift terminals and the parking lot.
   const tappable: VillageItem[] = useMemo(() => (vi ? [...vi.items, { kind: 'parking', art: game.amenities.parking, c: vi.lot, r: 45 }] : []), [vi, game.amenities.parking])
@@ -66,7 +58,6 @@ export function ResortView({ game, site, onChange, onTab, onSeason, onLand, onSe
     ? { x: frame.v[0] + frame.r[0], y: frame.v[1] + frame.r[1] + 2, metresAcross: 230 + 45 * game.amenities.lodge }
     : undefined
 
-  const ready = !!(t && layer && kept && sprites && roads)
   return (
     <MapView
       terrainId={terrainId}
@@ -85,12 +76,8 @@ export function ResortView({ game, site, onChange, onTab, onSeason, onLand, onSe
         setSelKey(hit ? key(hit.it) : null)
       }}
       overlay={(ctx, scale) => {
-        if (!ready) return
-        drawResortScene(ctx, scale, {
-          t: t!, roads: roads!, trails: game.trails, lifts: game.lifts, amenities: game.amenities,
-          village: frame && vi ? { F: frame, ...vi } : null, forest: { layer: layer!, kept: kept! }, sprites: sprites!,
-          fullness, selected,
-        })
+        const sc = scene(fullness, selected)
+        if (sc) drawResortScene(ctx, scale, sc)
       }}
       actions={
         <nav className="tabbar">
