@@ -217,6 +217,15 @@ with a reduced off-season (building, hiring, financing, summer activities).
   club** (resorts with ≤ 2 lifts): 7 days, local day-ticket demand × a normal draw (mean 1.10, sd 0.05, clamped
   0.95–1.25) made at booking from the game seed (rebooking the same dates gives the same draw); mean payoff a
   slight gain, ~40% of runs lose. `marketing.test.ts` checks timing on the real resort. All PLACEHOLDER.
+- **Occupancy (owner request: lot/lift % should move with the crowd; `liveDay.ts`):** the lot and the lifts hold
+  so many guests *at once* (`lotSpaces` = rated guests/day × the day profile's peak share, ~0.86). Each tick admits
+  min(demand, room left now), where guests from the last 5 hours still take room. Identical to the old per-slice
+  cap when demand fits the day; on oversubscribed days the lot fills by mid-morning, then refills as the morning
+  crowd leaves (~2 pm, fixed 5-hour stay), so a mobbed day passes up to ~1.7× the rating. Groups take room too.
+  `lotPct`/`liftPct` on each tick are occupancy now (on hill ÷ room at once); `lotFill` drives the cars drawn
+  (`parkedCars` in `art.ts`: exactly that share of spaces, nearest lot first). Balance: year 1 identical, yr 5 op
+  profit median +9%, yr 15 net worth median −4%, 0% bankrupt. Live HUD layout options (PREVIEW, `?hud=a|b|c`
+  in the URL; default unchanged) await owner pick.
 - **Extended hours and the 2 pm check (owner request; `liveDay.ts`):** "Open to 5 pm" adds two day ticks
   (16:00–17:00) before any night session: extra late arrivals (weights 6+5 on the day profile) at a 60% twilight
   ticket, crew paid ×1.5, lifts and half the overhead. Switchable until 4 pm. Overtime crew can now be called in

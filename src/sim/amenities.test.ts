@@ -1,3 +1,4 @@
+import { lotSpaces } from './liveDay'
 import { describe, expect, it } from 'vitest'
 import { AMENITIES, AMENITY_TUNING, NO_AMENITIES, amenityEffects, amenityUpkeep, nextAmenityCost } from './amenities'
 import { planPurchase } from './economy'
@@ -82,11 +83,13 @@ describe('reputation and the growth loop', () => {
     expect(amen.guests).toBeGreaterThan(one.guests)
   })
 
-  it('caps guests at parking capacity', () => {
+  it('caps guests at parking capacity (cars in the lot at once)', () => {
     const tiny = { ...amenityEffects(NO_AMENITIES, false), parkingCapGuests: 100 }
     let s = startSeason(1, 2, { ...base, amenity: tiny }, 79)
     while (s.day < SEASON.lengthDays) s = simulateDay(s, { ...base, amenity: tiny }).season
-    for (const d of s.days) expect(d.guests).toBeLessThanOrEqual(100)
+    // The lot turns over as people leave, so a mobbed day can see up to ~1.7× its rated guests.
+    for (const d of s.days) expect(d.peakOnHill ?? 0).toBeLessThanOrEqual(lotSpaces(100) + 1)
+    for (const d of s.days) expect(d.guests).toBeLessThanOrEqual(2 * 100)
     expect(seasonTotals(s.days, s).parkingTurnedAway).toBeGreaterThan(0)
   })
 })

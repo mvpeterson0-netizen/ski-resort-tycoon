@@ -472,7 +472,29 @@ export function drawBuilding(ctx: CanvasRenderingContext2D, kind: BuildingKind, 
   }
 }
 
-/** Parking: a gravel lot (level 0) plus paved lots per level, with cars by fullness. */
+const CAR_ROWS = 4
+const CAR_COLS = 12
+
+/**
+ * Which spaces hold a car when `fullness` (0..1) of the whole parking area is taken: exactly
+ * round(fullness × spaces) cars, the first lot (nearest the base) filling before the next, and
+ * spaces within a lot taken in a fixed scattered order, so cars stay put as the lot fills.
+ */
+export function parkedCars(lots: number, fullness: number): Set<string> {
+  const per = CAR_ROWS * CAR_COLS
+  let left = Math.round(Math.max(0, Math.min(1, fullness)) * per * lots)
+  const out = new Set<string>()
+  for (let i = 0; i < lots && left > 0; i++) {
+    const order: [number, number, number][] = []
+    for (let r = 0; r < CAR_ROWS; r++) for (let c = 0; c < CAR_COLS; c++) order.push([hash(i * 97 + r * 13, c * 7), r, c])
+    order.sort((a, b) => a[0] - b[0])
+    for (const [, r, c] of order.slice(0, left)) out.add(`${i}:${r}:${c}`)
+    left -= Math.min(left, per)
+  }
+  return out
+}
+
+/** Parking: a gravel lot (level 0) plus paved lots per level, with cars by fullness (share of all spaces taken). */
 export function drawParking(ctx: CanvasRenderingContext2D, level: number, x: number, y: number, k: number, fullness = 0.6, ux = 0, uy = -1) {
   const s = k // parking is drawn at true scale; it is already large
   // Lots stack downhill (away from the mountain) and to the side.
@@ -480,6 +502,7 @@ export function drawParking(ctx: CanvasRenderingContext2D, level: number, x: num
   const slots: [number, number][] = [[-75, 0], [75, 0], [-150, 0], [150, 0]]
   for (let i = 0; i < level; i++) lots.push([...slots[i], 70, 40])
   const nx = -uy, ny = ux
+  const taken = parkedCars(lots.length, fullness)
   lots.forEach(([ox, oy, w, d], i) => {
     // ox = sideways, oy = downhill; rotate into the map frame.
     const cx = x + (nx * ox - ux * oy) * s, cy = y + (ny * ox - uy * oy) * s
@@ -488,9 +511,9 @@ export function drawParking(ctx: CanvasRenderingContext2D, level: number, x: num
     ctx.lineWidth = Math.max(1, 2 * s)
     ctx.beginPath(); ctx.roundRect(cx - (w * s) / 2, cy - (d * s) / 2, w * s, d * s, 4 * s); ctx.fill(); ctx.stroke()
     const colours = ['#c0503f', '#2a68c4', '#e4b33a', '#ffffff', '#26313a', '#7a8590']
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 12; c++) {
-        if (hash(i * 97 + r * 13, c * 7) > fullness) continue
+    for (let r = 0; r < CAR_ROWS; r++) {
+      for (let c = 0; c < CAR_COLS; c++) {
+        if (!taken.has(`${i}:${r}:${c}`)) continue
         ctx.fillStyle = colours[Math.floor(hash(c + i * 5, r * 3) * colours.length)]
         ctx.fillRect(cx - (w * s) / 2 + (c + 0.6) * ((w * s) / 12.5), cy - (d * s) / 2 + (r * 9 + 4) * s, 3 * s, 5 * s)
       }

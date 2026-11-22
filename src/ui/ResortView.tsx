@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AMENITIES, AMENITY_TUNING, BUILD, amenityEffects, buyAmenity, computeParcels, nextAmenityCost, placeBase, seasonBlocker,
-  suggestBaseSites, toPlacement, totalDebt,
+  suggestBaseSites, toPlacement, totalDebt, lotSpaces,
   type AmenityId, type GameState, type Site, type Terrain,
 } from '../sim'
 import { effectLine } from './amenityText'
@@ -48,10 +48,10 @@ export function ResortView({ game, site, onChange, onTab, onSeason, onLand, onSe
   const key = (it: VillageItem) => it.liftId ?? it.kind
   const selected = tappable.find((it) => key(it) === selKey) ?? null
 
-  // Parking looks busier on busy days.
+  // Parking shows the last day's busiest moment: cars parked against the lot's spaces.
   const lastDay = game.season?.days.at(-1)
   const cap = amenityEffects(game.amenities, false).parkingCapGuests
-  const fullness = inSeason && lastDay ? Math.min(0.95, 0.1 + lastDay.guests / cap) : 0.2
+  const fullness = inSeason && lastDay ? Math.min(1, (lastDay.peakOnHill ?? lastDay.guests * 0.85) / Math.max(1, lotSpaces(cap))) : 0.2
 
   const blocker = seasonBlocker(game)
   const focus = game.base && frame

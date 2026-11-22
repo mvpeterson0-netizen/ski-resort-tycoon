@@ -20,7 +20,7 @@ const roomy: SeasonInputs = {
   lifts: [{ type: 'fixedQuad', capacityPph: 30_000 }], staff: { ...FULL_STAFF, payrollUsd: 6000 }, amenity,
 }
 /** Lifts that fill up: the hill is the limit. */
-const tight: SeasonInputs = { ...roomy, lifts: [{ type: 'fixedDouble', capacityPph: 500 }] }
+const tight: SeasonInputs = { ...roomy, lifts: [{ type: 'fixedDouble', capacityPph: 200 }] }
 /** A small lot: parking is the limit. */
 const smallLot: SeasonInputs = { ...roomy, amenity: { ...amenity, parkingCapGuests: 350 } }
 
@@ -112,8 +112,11 @@ describe('overflow parking shuttle', () => {
     expect(off.acc.parkingAway).toBeGreaterThan(0)
     const on = runToEnd(setLiveShuttle(startLiveDay(s, smallLot, plainContext(s)), true), smallLot)
     expect(on.acc.guests).toBeGreaterThan(off.acc.guests)
-    const carried = on.acc.guests - off.acc.guests
-    expect(on.acc.parts!.services).toBeCloseTo(LIVE.shuttleDayUsd + carried * LIVE.shuttlePerGuestUsd, 0)
+    // Each guest who needed the overflow lot pays the per-guest cost: at least the extra guests
+    // (some who would have found a space as others left also ride the bus).
+    const extra = on.acc.guests - off.acc.guests
+    expect(on.acc.parts!.services).toBeGreaterThanOrEqual(LIVE.shuttleDayUsd + extra * LIVE.shuttlePerGuestUsd - 1)
+    expect(on.acc.parts!.services).toBeLessThan(LIVE.shuttleDayUsd + 2 * extra * LIVE.shuttlePerGuestUsd)
     // With room in the lot it only costs the day's hire.
     const roomyDay = dayWhere(roomy, 3)
     const a = runToEnd(startLiveDay(roomyDay, roomy, plainContext(roomyDay)), roomy)

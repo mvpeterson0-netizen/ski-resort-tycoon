@@ -280,11 +280,12 @@ describe('event cards', () => {
     expect(gen.acc.eventCost).toBe(10_000)
   })
 
-  it('a group booking adds paying skiers over four ticks, or nothing if declined', () => {
+  it('a group booking adds paying skiers over four ticks (taking room walk-ins would use on a full day), or nothing if declined', () => {
     const { inp, live } = withCard(card('groupBooking'))
     const yes = runToEnd(answerCard(toCard(live, inp), inp, 'accept'), inp)
     const no = runToEnd(answerCard(toCard(live, inp), inp, 'decline'), inp)
-    expect(yes.acc.guests - no.acc.guests).toBeCloseTo(200, 0)
+    expect(yes.acc.guests - no.acc.guests).toBeGreaterThan(0)
+    expect(yes.acc.guests - no.acc.guests).toBeLessThanOrEqual(200 + 1e-6)
     expect(yes.acc.ticketRev).toBeGreaterThan(no.acc.ticketRev)
   })
 

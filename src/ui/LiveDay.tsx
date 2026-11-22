@@ -41,6 +41,74 @@ const dateLabel = (iso: string) => {
 }
 const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
 
+/** PREVIEW (owner review): layout options for the live metrics, picked with ?hud=a|b|c (default: the current chips). */
+const HUD_VARIANT = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hud') : null) ?? 'now'
+type Tone = 'ok' | 'near' | 'full'
+const toneOf = (p: number): Tone => (p >= 1 ? 'full' : p >= 0.9 ? 'near' : 'ok')
+const TONE_FILL: Record<Tone, string> = { ok: '#3a9150', near: '#e0a526', full: '#c0503f' }
+const pctText = (p: number) => `${Math.min(100, Math.round(p * 100))}%`
+
+/** Option A: a labelled bar gauge. */
+function Gauge({ label, pct, note }: { label: string; pct: number; note?: string }) {
+  const tone = toneOf(pct)
+  return (
+    <div className={`gauge ${tone}`}>
+      <small>{label}</small>
+      <b>{pct >= 1 ? 'FULL' : pctText(pct)}</b>
+      <i><em style={{ width: `${Math.min(100, pct * 100)}%`, background: TONE_FILL[tone] }} /></i>
+      {note && <small className="gauge-note">{note}</small>}
+    </div>
+  )
+}
+
+/** Option C: a ring gauge. */
+function Ring({ label, pct, text }: { label: string; pct: number; text?: string }) {
+  const tone = toneOf(pct)
+  const deg = Math.min(360, Math.max(0, pct) * 360)
+  return (
+    <div className={`ring ${tone}`}>
+      <div className="ring-dial" style={{ background: `conic-gradient(${TONE_FILL[tone]} ${deg}deg, rgba(43,58,70,0.12) 0)` }}>
+        <span>{text ?? pctText(pct)}</span>
+      </div>
+      <small>{label}</small>
+    </div>
+  )
+}
+
+/** Option B: a rounded badge drawn on the map, constant size on screen. */
+function drawBadge(ctx: CanvasRenderingContext2D, scale: number, x: number, y: number, title: string, value: string, tone: Tone, pct?: number, avoid: number[][] = []): number[] {
+  const fs = 12 / scale
+  ctx.save()
+  ctx.font = `800 ${fs}px Nunito, sans-serif`
+  const tw = ctx.measureText(title).width, vw = ctx.measureText(value).width
+  const w = tw + vw + fs * 2.2, h = fs * (pct !== undefined ? 2.5 : 2)
+  const bx = x - w / 2
+  let by = y - h
+  // Move up past any badge already drawn here.
+  for (const [ax, ay, aw, ah] of avoid) if (bx < ax + aw && bx + w > ax && by < ay + ah + fs * 0.8 && by + h + fs * 0.8 > ay) by = ay - h - fs * 0.9
+  ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = 6 / scale; ctx.shadowOffsetY = 1 / scale
+  ctx.fillStyle = tone === 'ok' ? 'rgba(255,253,248,0.97)' : TONE_FILL[tone]
+  ctx.beginPath(); ctx.roundRect(bx, by, w, h, fs * 0.6); ctx.fill()
+  ctx.shadowColor = 'transparent'
+  // Pointer to the thing it describes.
+  ctx.beginPath(); ctx.moveTo(x - fs * 0.5, by + h); ctx.lineTo(x, by + h + fs * 0.6); ctx.lineTo(x + fs * 0.5, by + h); ctx.fill()
+  ctx.textBaseline = 'middle'
+  const ty = by + fs * 1.0
+  ctx.fillStyle = tone === 'ok' ? '#6b7882' : 'rgba(255,255,255,0.85)'
+  ctx.fillText(title, bx + fs * 0.7, ty)
+  ctx.fillStyle = tone === 'ok' ? '#2b3a46' : '#fff'
+  ctx.fillText(value, bx + fs * 1.5 + tw, ty)
+  if (pct !== undefined) {
+    const bw = w - fs * 1.4
+    ctx.fillStyle = tone === 'ok' ? 'rgba(43,58,70,0.12)' : 'rgba(255,255,255,0.35)'
+    ctx.fillRect(bx + fs * 0.7, by + h - fs * 0.6, bw, fs * 0.25)
+    ctx.fillStyle = tone === 'ok' ? TONE_FILL.ok : '#fff'
+    ctx.fillRect(bx + fs * 0.7, by + h - fs * 0.6, bw * Math.min(1, pct), fs * 0.25)
+  }
+  ctx.restore()
+  return [bx, by, w, h]
+}
+
 /** Net so far today: takings minus costs, event income and costs included. */
 const liveNet = (l: LiveDay) => {
   const a = l.acc
@@ -149,8 +217,8 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const edit = (f: (l: LiveDay) => LiveDay) => live && onChange({ ...game, live: f(live) })
   const row = live?.rows.at(-1)
   const price = live?.priceUsd ?? game.ticketPriceUsd
-  const cap = inp.amenity?.parkingCapGuests ?? 1500
-  const fullness = Math.min(0.95, 0.1 + (row?.onHill ?? 0) / Math.max(1, cap))
+  // Cars drawn = share of the lot's own spaces taken right now (the shuttle's overflow lot is off-map).
+  const fullness = row?.lotFill ?? 0
   const factors = useMemo(() => (live
     ? game.lifts.map((_, i) => (live.prep.carryDown[i] || live.tick < live.fx.liftUntil[i] ? 0 : live.lifts[i] === 'closed' ? 0 : live.lifts[i] === 'slow' ? 0.5 : 1))
     : game.lifts.map(() => 1)), [live, game.lifts])
@@ -214,6 +282,21 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         if (l && l.prep.open) {
           const r = l.rows.at(-1)
           drawSkiers(ctx, scale, t, routes, { onHill: r?.onHill ?? 0, queueMin: r?.queueMin ?? 0, factors, time: performance.now() / 1000 })
+          // Option B: the numbers sit on the map, on the things they describe.
+          if (HUD_VARIANT === 'b' && r) {
+            const S = RENDER_SCALE
+            const k = S / t.cellM
+            const placed: number[][] = []
+            if (sc.village && r.lotPct !== undefined) {
+              const [lx, ly] = [(sc.village.lot[0] + 0.5) * S, (sc.village.lot[1] + 0.5) * S]
+              placed.push(drawBadge(ctx, scale, lx, ly - 24 * k, 'Parking', r.lotPct >= 1 ? 'FULL' : pctText(r.lotPct), toneOf(r.lotPct), r.lotPct))
+            }
+            if (game.lifts.length && r.liftPct !== undefined) {
+              const bx = game.lifts.reduce((s, l) => s + l.bottom[0], 0) / game.lifts.length
+              const by = Math.min(...game.lifts.map((l) => l.bottom[1]))
+              drawBadge(ctx, scale, (bx + 0.5) * S, (by + 0.5) * S - 10 * k, 'Lifts', `${r.liftPct >= 1 ? 'FULL' : pctText(r.liftPct)} · ${r.queueMin} min line`, toneOf(r.liftPct), r.liftPct, placed)
+            }
+          }
         }
       }}
       panel={
@@ -331,7 +414,65 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         </div>
       }
     >
-      <div className="hud">
+      {HUD_VARIANT === 'a' && (
+        <div className="hud hud-a">
+          <div className="hud-line">
+            <b>{live ? dateLabel(live.prep.date) : ''}</b>
+            <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? 'Not open yet' : '—'}</span>
+            {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}<small>today</small></b>}
+            <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
+          </div>
+          {row && live?.prep.open && (
+            <div className="gauges">
+              {row.lotPct !== undefined && <Gauge label="Parking" pct={row.lotPct} />}
+              {row.liftPct !== undefined && <Gauge label="Lifts" pct={row.liftPct} />}
+              <div className="gauge num"><small>Line</small><b>{row.queueMin} min</b></div>
+              <div className="gauge num"><small>On hill</small><b>{row.onHill.toLocaleString()}</b><small className="gauge-note">{Math.round(live.acc.guests).toLocaleString()} today</small></div>
+            </div>
+          )}
+          {live && <p className="hud-sub">❄ {live.prep.baseIn}″ base{live.prep.newSnowIn > 0 ? ` · +${live.prep.newSnowIn}″ new` : ''}{live.prep.open ? ` · conditions ${Math.round(live.prep.conditions * 100)}%` : ''}</p>}
+        </div>
+      )}
+      {HUD_VARIANT === 'b' && (
+        <>
+          <div className="hud hud-b">
+            <div className="hud-line">
+              <b>{live ? dateLabel(live.prep.date) : ''}</b>
+              <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? 'Not open yet' : '—'}</span>
+              {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}<small>today</small></b>}
+              <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
+            </div>
+          </div>
+          {row && live && (
+            <div className="hud-foot">
+              <span><b>{row.onHill.toLocaleString()}</b> on the hill</span>
+              <span><b>{Math.round(live.acc.guests).toLocaleString()}</b> today</span>
+              <span>❄ <b>{live.prep.baseIn}″</b>{live.prep.newSnowIn > 0 ? ` +${live.prep.newSnowIn}″` : ''}</span>
+              <span><b>{Math.round(live.prep.conditions * 100)}%</b> cond.</span>
+            </div>
+          )}
+        </>
+      )}
+      {HUD_VARIANT === 'c' && (
+        <>
+          <div className="hud-bar">
+            <b>{live ? dateLabel(live.prep.date) : ''}</b>
+            <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? 'Not open yet' : '—'}</span>
+            {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}</b>}
+            <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
+          </div>
+          {row && live?.prep.open && (
+            <div className="hud-rail">
+              {row.lotPct !== undefined && <Ring label="Parking" pct={row.lotPct} />}
+              {row.liftPct !== undefined && <Ring label="Lifts" pct={row.liftPct} />}
+              <Ring label="Line" pct={Math.min(1, row.queueMin / 20)} text={`${row.queueMin}m`} />
+              <div className="rail-num"><b>{row.onHill.toLocaleString()}</b><small>on hill</small></div>
+              <div className="rail-num"><b>{live.prep.baseIn}″</b><small>{Math.round(live.prep.conditions * 100)}% cond.</small></div>
+            </div>
+          )}
+        </>
+      )}
+      <div className="hud" hidden={HUD_VARIANT !== 'now'}>
         <div className="hud-row">
           <b>{live ? dateLabel(live.prep.date) : season ? dateLabel(seasonDate(game.year, season.day).toISOString().slice(0, 10)) : ''}</b>
           <span>

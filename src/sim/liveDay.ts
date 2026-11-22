@@ -118,6 +118,13 @@ function peakShare(w: number[], stay: number): number {
 const DAY_PEAK = peakShare(DAY_W, LIVE.dayStayTicks)
 const NIGHT_PEAK = peakShare(NIGHT_W, LIVE.nightStayTicks)
 
+/**
+ * Guests a lot (or the lifts) holds at once, from its rated guests per day: the busiest
+ * moment of a day that exactly fills it. A lot rated 1,000/day holds ~856 at once; it
+ * turns over as morning skiers leave, so a busy day can see more than its rating.
+ */
+export const lotSpaces = (guestsPerDay: number) => guestsPerDay * DAY_PEAK
+
 export type LiftMode = 'open' | 'slow' | 'closed'
 
 /** Clock time of a tick, e.g. "9:30" or "17:00". */
@@ -162,10 +169,12 @@ export interface LiveTick {
   onHill: number
   queueMin: number
   turnedAway: number
-  /** Demand this tick as a share of the parking lot's room for it (incl. shuttle); 1 = full, above 1 = people turned away. Absent when the lot has no limit (or in older saves). */
+  /** Guests here now as a share of what the lot holds at once (incl. shuttle); 1 = full, arrivals turned away. Absent when the lot has no limit. (Saves from before occupancy stored demand vs capacity here.) */
   lotPct?: number
-  /** Same for the lifts' hard cap (what is actually running now); 1 = full, above 1 = people turned away. */
+  /** Guests on the hill now as a share of what the running lifts can hold at once (hard cap); 1 = full. */
   liftPct?: number
+  /** Share of the lot's own spaces taken (shuttle excluded, capped at 1): drives the cars drawn. */
+  lotFill?: number
   revenueUsd: number
   /** Lifts running. */
   lifts: number
@@ -508,12 +517,21 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
     wantPass = w * prep.locals * prep.passAdoption * P.frequencyBoost * LIVE.nightPassShare * condScale * outage
   }
   const wanted = wantDay + wantPass
-  const cap = Math.min(liftCap, parkingCap) * w
-  const guests = Math.min(wanted, cap)
+  // Room right now: the lot and the lifts hold so many guests at once (their daily capacity at the
+  // session's peak share); guests still here from earlier take up room until they leave. When demand
+  // fits the day this admits exactly what the old per-slice cap did; on oversubscribed days early
+  // arrivals all get in, the lot fills, and later arrivals get in only as others leave.
+  const stay = night ? LIVE.nightStayTicks : LIVE.dayStayTicks
+  const peak = night ? NIGHT_PEAK : DAY_PEAK
+  const session = live.rows.filter((r) => (night ? r.tick >= end : r.tick < end))
+  const stillHere = sum(session.slice(-(stay - 1)).map((r) => r.arrived))
+  const liftRoom = Math.max(0, liftCap * peak - stillHere)
+  const lotRoom = Number.isFinite(parkingCap) ? Math.max(0, parkingCap * peak - stillHere) : Infinity
+  const guests = Math.min(wanted, liftRoom, lotRoom)
   const scale = wanted > 0 ? guests / wanted : 0
   const dayG = wantDay * scale
   const away = Math.max(0, wanted - guests)
-  const parkingAway = parkingCap < liftCap ? Math.max(0, Math.min(wanted, liftCap * w) - guests) : 0
+  const parkingAway = lotRoom < liftRoom ? Math.max(0, Math.min(wanted, liftRoom) - guests) : 0
   // A booked group arrives over a few ticks at a flat price.
   const group = !night && t < fx.groupUntil ? fx.groupPerTick : 0
 
@@ -527,7 +545,7 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const extras = (dayG * halfExtras + group) * (amen.extrasPerDayGuestUsd - amen.lessonsPerDayGuestUsd * (1 - staff.ratios.instructors))
   // Shuttle: a day's hire when it starts (the first tick it runs), plus each guest it carries.
   const shuttleFirst = live.shuttle && !live.acc.shuttleStarted
-  const carried = live.shuttle ? Math.max(0, guests - lotCap * w) : 0
+  const carried = live.shuttle ? Math.max(0, guests - Math.max(0, lotCap * peak - stillHere)) : 0
   const shuttleCost = shuttleGuests > 0 ? (shuttleFirst ? LIVE.shuttleDayUsd : 0) + carried * LIVE.shuttlePerGuestUsd : 0
 
   // Costs accrue every tick: fixed running costs by the hour, lifts only while running.
@@ -565,11 +583,8 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   }
 
   // Lift line: guests on the hill against the lift capacity right now.
-  const stay = night ? LIVE.nightStayTicks : LIVE.dayStayTicks
-  const session = live.rows.filter((r) => (night ? r.tick >= end : r.tick < end))
-  const onHill = sum(session.slice(-(stay - 1)).map((r) => r.arrived)) + allGuests
   // Late guests arrive while the day crowd thins out; the day's peak share still sizes the line.
-  const peak = night ? NIGHT_PEAK : DAY_PEAK
+  const onHill = stillHere + allGuests
   const load = comfort > 0 ? onHill / (comfort * peak) : 4
   const queueMin = Math.round(Math.max(0, load - 0.7) * 25)
 
@@ -590,8 +605,9 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const revenue = ticketRev + food + extras + apresRev
   const row: LiveTick = {
     tick: t, arrived: allGuests, onHill: Math.round(onHill), queueMin, turnedAway: away, revenueUsd: Math.round(revenue),
-    ...(Number.isFinite(parkingCap) && parkingCap * w > 0 ? { lotPct: wanted / (parkingCap * w) } : {}),
-    ...(liftCap * w > 0 ? { liftPct: wanted / (liftCap * w) } : {}),
+    ...(Number.isFinite(parkingCap) && parkingCap > 0 ? { lotPct: onHill / (parkingCap * peak) } : {}),
+    ...(liftCap > 0 ? { liftPct: onHill / (liftCap * peak) } : {}),
+    ...(Number.isFinite(lotCap) && lotCap > 0 ? { lotFill: Math.min(1, onHill / (lotCap * peak)) } : {}),
     lifts: factors.filter((f) => f > 0).length, priceUsd: price,
   }
   const a = live.acc

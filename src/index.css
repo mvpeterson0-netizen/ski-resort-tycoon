@@ -485,3 +485,44 @@ html { font-size: 15px; }
 .row-card .row-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .row-card .row-btn { min-height: 34px; padding: 4px 10px; font-size: 0.85rem; white-space: nowrap; }
 .row-card .card-title .badge { font-size: 0.72rem; margin-left: 6px; }
+
+/* PREVIEW (owner review): live-day metrics layouts, ?hud=a|b|c in the URL. */
+.hud-line { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+.hud-line > span { color: var(--muted); font-size: 0.85rem; font-weight: 800; }
+.hud-today { margin-left: auto; font-size: 1rem; display: inline-flex; align-items: baseline; gap: 4px; }
+.hud-today small { color: var(--muted); font-size: 0.72rem; font-weight: 800; }
+.hud-today.neg { color: var(--danger); }
+.hud-home { font: inherit; font-size: 1.1rem; width: 34px; height: 34px; border: 0; border-radius: 10px; background: var(--bg); color: var(--ink); flex: none; }
+/* A: slim card, one line + four gauges in a row. */
+.hud-a { padding: 6px 8px 6px 12px; }
+.gauges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+.gauge { background: var(--bg); border-radius: 8px; padding: 3px 7px 5px; display: flex; flex-direction: column; min-width: 0; }
+.gauge small { color: var(--muted); font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+.gauge b { font-size: 0.98rem; line-height: 1.15; }
+.gauge i { display: block; height: 4px; border-radius: 2px; background: rgba(43,58,70,0.12); margin-top: 2px; overflow: hidden; }
+.gauge i em { display: block; height: 100%; border-radius: 2px; transition: width 0.6s; }
+.gauge.near b { color: #8a6100; }
+.gauge.full { background: var(--danger); }
+.gauge.full small, .gauge.full b { color: #fff; }
+.gauge .gauge-note { text-transform: none; letter-spacing: 0; font-size: 0.66rem; }
+.hud-sub { margin: 3px 0 0; font-size: 0.72rem; color: var(--muted); font-weight: 800; }
+/* B: one-line header; the numbers live on the map (badges) and a strip along the bottom of the map. */
+.hud-b { padding: 6px 8px 6px 12px; }
+.hud-foot { position: absolute; left: 60px; right: 8px; bottom: 10px; display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; pointer-events: none; }
+.hud-foot span { background: rgba(255,253,248,0.94); border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; font-size: 0.74rem; color: var(--muted); font-weight: 800; }
+.hud-foot b { color: var(--ink); }
+/* C: a full-width bar at the top of the screen and a rail of ring gauges down the right edge. */
+.hud-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: calc(6px + env(safe-area-inset-top)) 8px 6px 12px;
+  background: var(--ink); color: #fff; }
+.hud-bar > span { color: rgba(255,255,255,0.7); font-size: 0.85rem; font-weight: 800; }
+.hud-bar .hud-home { background: rgba(255,255,255,0.14); color: #fff; }
+.hud-bar .hud-today.neg { color: #ffb4a8; }
+.hud-rail { position: absolute; top: 56px; right: 8px; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none;
+  background: rgba(255,253,248,0.9); border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; }
+.ring { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.ring-dial { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; }
+.ring-dial span { width: 36px; height: 36px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 0.74rem; font-weight: 800; }
+.ring small, .rail-num small { font-size: 0.62rem; color: var(--muted); font-weight: 800; text-transform: uppercase; }
+.ring.full .ring-dial span { color: var(--danger); }
+.rail-num { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.rail-num b { font-size: 0.85rem; }

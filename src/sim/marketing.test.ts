@@ -131,7 +131,7 @@ describe('powder alert', () => {
 
 describe('the 2 pm check', () => {
   // A small lift on a big market: lines and people turned away.
-  const crowded: SeasonInputs = { ...inputs, lifts: [{ type: 'fixedDouble', capacityPph: 500 }], staff: { ...FULL_STAFF, payrollUsd: 6000 } }
+  const crowded: SeasonInputs = { ...inputs, lifts: [{ type: 'fixedDouble', capacityPph: 150 }], staff: { ...FULL_STAFF, payrollUsd: 6000 } }
   const quiet: SeasonInputs = { ...inputs, lifts: [{ type: 'fixedQuad', capacityPph: 30_000 }] }
 
   it('suggests overtime when the lifts are turning people away, and the estimate is the real effect', () => {
