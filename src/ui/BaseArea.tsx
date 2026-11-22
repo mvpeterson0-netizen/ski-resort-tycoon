@@ -28,16 +28,17 @@ export function BaseAreaScreen({ game, onChange, onBack }: { game: GameState; on
             const cost = nextAmenityCost(game.amenities, id)
             const nextDaily = cost !== null ? spec.levels[level].dailyCostUsd : 0
             return (
-              <li key={id} className="card static">
-                <span className="card-title">{spec.name}</span>
-                <span className="badge">{level === 0 ? 'Basic' : `Level ${level} of ${spec.levels.length}`}</span>
-                <span className="card-sub">{spec.blurb}</span>
-                <span className="card-sub"><b>Now:</b> {effectLine(id, level)}</span>
+              <li key={id} className="card static row-card">
+                <div className="row-text">
+                  <span className="card-title">{spec.name} <small className="badge">{level === 0 ? 'Basic' : `L${level}/${spec.levels.length}`}</small></span>
+                  <span className="card-sub">{spec.blurb}</span>
+                  <span className="card-sub"><b>Now:</b> {effectLine(id, level)}</span>
+                  {cost !== null && <span className="card-sub"><b>Next:</b> {effectLine(id, level + 1)} · {usd(nextDaily)}/day</span>}
+                </div>
                 {cost !== null ? (
                   <>
-                    <span className="card-sub"><b>Next:</b> {effectLine(id, level + 1)} · {usd(nextDaily)}/day to run</span>
                     <button
-                      className="btn primary"
+                      className="btn primary row-btn"
                       disabled={!offseason || cost > game.cashUsd}
                       onClick={() => {
                         const r = buyAmenity(game, id)
@@ -49,7 +50,7 @@ export function BaseAreaScreen({ game, onChange, onBack }: { game: GameState; on
                     </button>
                   </>
                 ) : (
-                  <span className="card-sub ok">Fully built</span>
+                  <span className="card-sub ok row-btn">Fully built</span>
                 )}
               </li>
             )
@@ -78,22 +79,20 @@ function Snowmaking({ game, onChange, setMessage }: {
   const coverage = trailKm > 0 ? game.snowmakingKm / trailKm : 0
   const offseason = game.phase === 'offseason'
   return (
-    <div className="card static">
-      <span className="card-title">Snowmaking</span>
-      <span className="badge">{Math.round(coverage * 100)}% of trails</span>
-      <span className="card-sub">
-        Opens your season sooner in poor snow years and keeps covered runs at a {SNOWMAKING.madeBaseIn}" base. Costs energy and water on days it runs, plus a snowmaking crew.
-      </span>
-      <div className="credit-bar" role="img" aria-label={`${game.snowmakingKm} of ${maxKm} km`}>
-        <i style={{ width: `${maxKm > 0 ? Math.min(100, (game.snowmakingKm / maxKm) * 100) : 0}%` }} />
+    <div className="card static row-card">
+      <div className="row-text">
+        <span className="card-title">Snowmaking <small className="badge">{Math.round(coverage * 100)}% of trails</small></span>
+        <span className="card-sub">
+          Opens your season sooner in poor snow years; covered runs held at a {SNOWMAKING.madeBaseIn}" base. Costs energy, water and a crew.
+        </span>
+        <span className="card-sub">
+          <b>{game.snowmakingKm} km</b> of {maxKm} km allowed · water rights: {WATER_LABEL[water]}
+          {site.unverified?.includes('waterRights') ? ' (est.)' : ''}
+        </span>
       </div>
-      <span className="card-sub">
-        <b>{game.snowmakingKm} km</b> covered of {maxKm} km allowed · water rights: {WATER_LABEL[water]}
-        {site.unverified?.includes('waterRights') ? ' (est.)' : ''}
-      </span>
       {step > 0 ? (
         <button
-          className="btn primary"
+          className="btn primary row-btn"
           disabled={!offseason || step * SNOWMAKING.installPerKmUsd > game.cashUsd}
           onClick={() => {
             const r = buySnowmaking(game, site, step)
@@ -104,7 +103,7 @@ function Snowmaking({ game, onChange, setMessage }: {
           Add {step} km · ${Math.round(step * SNOWMAKING.installPerKmUsd / 1000)}k
         </button>
       ) : (
-        <span className="card-sub">{trailKm > 0 ? 'At your water-rights limit. Build more trails to cover more.' : 'Build trails first.'}</span>
+        <span className="card-sub row-btn">{trailKm > 0 ? 'At water-rights limit' : 'Build trails first'}</span>
       )}
     </div>
   )

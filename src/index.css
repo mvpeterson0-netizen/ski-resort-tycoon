@@ -386,3 +386,95 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .promo-results { margin: 4px 0 0; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; gap: 6px; }
 .promo-results .rep-foot { margin: 0; }
 .panel.price .btn.small-btn { white-space: nowrap; min-width: 92px; padding: 0 14px; flex: none; }
+
+/* ===== Compact pass (owner request: shorter sections, less "generic card UI") =====
+   Soft Trail colours and Nunito stay; sizes, spacing, corners and shadows shrink.
+   Blocks are flat with a 1px border, lists read like tables, controls are short. */
+:root { --radius: 10px; --shadow: 0 1px 4px rgba(60, 50, 30, 0.12); }
+html { font-size: 15px; }
+.screen { padding-left: 12px; padding-right: 12px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.screen-title { margin: 10px 0 4px; font-size: 1.2rem; }
+.tagline { font-size: 0.86rem; line-height: 1.3; }
+.group { margin: 12px 0 4px; font-size: 0.66rem; letter-spacing: 0.08em; }
+.btn { min-height: 42px; font-size: 0.95rem; border-radius: 10px; }
+.btn.primary, .card, .panel, .traits, .kpis div, .btn:not(.primary) { box-shadow: none; }
+.actions { gap: 6px; padding-top: 8px; }
+.row { gap: 6px; }
+.cards { gap: 4px; }
+.card { padding: 7px 10px; gap: 1px; min-height: 0; border-radius: 10px; }
+.card-title { font-size: 0.95rem; padding-right: 76px; }
+.card-sub { font-size: 0.78rem; line-height: 1.3; }
+.badge { top: 8px; right: 10px; font-size: 0.7rem; }
+.card.static .btn { margin-top: 6px; min-height: 36px; font-size: 0.88rem; }
+.note { padding: 6px 10px; font-size: 0.8rem; margin: 2px 0 8px; border-radius: 8px; }
+.traits { border-radius: 10px; overflow: hidden; }
+.trait { padding: 6px 10px; gap: 8px; font-size: 0.86rem; align-items: baseline; }
+.trait:nth-child(even) { background: rgba(235, 227, 211, 0.32); }
+.trait.total { background: var(--bg) !important; }
+.trait dt small, .trait small, .trait dd small { font-size: 0.7rem; margin-top: 0; line-height: 1.25; }
+.panel { padding: 7px 10px; margin-bottom: 5px; border-radius: 10px; }
+.panel.price { gap: 8px; margin-top: 4px; }
+.panel.price span { font-size: 0.88rem; line-height: 1.25; }
+.panel.price .btn { min-height: 32px; width: 38px; font-size: 1.05rem; border-radius: 8px; }
+.panel.price b { font-size: 1rem; min-width: 44px; }
+.panel.snow { padding: 6px 4px; }
+.panel.snow b { font-size: 1.05rem; }
+.kpis { gap: 5px; margin: 8px 0; }
+.kpis div { padding: 6px 9px; border-radius: 10px; gap: 0; }
+.kpis b { font-size: 1.05rem; }
+.kpis span { font-size: 0.68rem; }
+.seg { gap: 4px; margin-bottom: 6px; }
+.seg button { min-height: 32px; padding: 0 12px; border-radius: 8px; font-size: 0.84rem; }
+.seg button.tgl.on { border-width: 1px; }
+.chips { gap: 4px; margin-bottom: 6px; }
+.chip { min-height: 30px; padding: 0 10px; border-radius: 8px; font-size: 0.8rem; }
+.hint { font-size: 0.8rem; line-height: 1.3; }
+.hint.small { margin-top: 4px; font-size: 0.74rem; }
+.warn, .ok { font-size: 0.82rem; margin: 4px 0 0; }
+.slider { height: 28px; }
+.slider-label { margin-bottom: 4px; }
+.slider-ends { font-size: 0.7rem; }
+.credit-bar { height: 8px; border-radius: 4px; }
+.btn.wide { margin-top: 6px; }
+.events { gap: 4px; margin-bottom: 6px; }
+.events li { padding: 5px 9px; border-radius: 8px; font-size: 0.8rem; }
+.map-panel { padding: 6px 12px 0; min-height: 0; }
+.map-panel h3 { font-size: 0.95rem; margin-bottom: 3px; }
+.mini-stats { font-size: 0.8rem; gap: 2px 10px; }
+.stepper .btn { min-height: 30px; width: 34px; font-size: 1.05rem; }
+.tabbar button { min-height: 40px; font-size: 0.74rem; border-radius: 8px; }
+.cal-grid { gap: 3px; }
+.cal-day { min-height: 42px; border-radius: 8px; padding: 2px; }
+.cal-day small { font-size: 0.62rem; }
+.cal-day b { font-size: 0.74rem; }
+.day-editor { border-radius: 12px; padding: 8px 10px; gap: 4px; bottom: 70px; }
+.toggle-row { padding: 2px; gap: 8px; font-size: 0.86rem; }
+.toggle-row input { width: 18px; height: 18px; }
+.pill { padding: 1px 8px; font-size: 0.74rem; }
+.foot { font-size: 0.68rem; margin-top: 6px; }
+.event-card { border-radius: 14px; padding: 12px; gap: 8px; }
+.event-card .btn { min-height: 48px; padding: 6px 12px; }
+.speedbar button { min-height: 42px; border-radius: 10px; }
+.live-panel { padding-top: 4px; }
+
+/* Marketing: one table row per campaign */
+.promo-table { margin-bottom: 4px; }
+.promo-table th { padding: 5px 8px; }
+.promo-table th b { font-size: 0.84rem; }
+.promo-table th small { font-size: 0.68rem; }
+.promo-table td { padding: 4px 6px; vertical-align: middle; }
+.promo-act { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+.promo-act select { font: inherit; font-size: 0.78rem; min-height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); padding: 0 4px; max-width: 108px; }
+.promo-act .btn { min-height: 32px; min-width: 0; padding: 0 12px; font-size: 0.82rem; border-radius: 8px; }
+.rep-table tr.tap { cursor: pointer; }
+.rep-table .status { font-size: 0.78rem; }
+.rep-table .status.running { color: var(--green); }
+.rep-table .status.completed { color: var(--muted); }
+.rep-table td > .promo-results { margin: 2px 0; padding: 6px; border-radius: 8px; white-space: normal; font-weight: 400; text-align: left; }
+.rep-table td.promo-cell { text-align: left; padding: 0 6px 6px; }
+
+/* Row cards: text on the left, action on the right (compact pass) */
+.row-card { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.row-card .row-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.row-card .row-btn { min-height: 34px; padding: 4px 10px; font-size: 0.85rem; white-space: nowrap; }
+.row-card .card-title .badge { font-size: 0.72rem; margin-left: 6px; }

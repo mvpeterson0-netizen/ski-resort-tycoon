@@ -283,50 +283,64 @@ function MarketingTab({ game, onChange }: { game: GameState; onChange: (g: GameS
       <p className="hint">Campaigns lift day-ticket demand for a few days. They never change what pass holders do. The cost is paid on the first day.</p>
       {snowSoon && <p className="note">Storm forecast for {dayName(game.year, snowSoon.day)}: a powder alert on that day would catch the crowd.</p>}
       <h3 className="group">Booked</h3>
-      {game.promos.length === 0 && <p className="hint">Nothing booked.</p>}
-      {game.promos.map((p) => {
-        const status = promoStatus(p, today)
-        const dates = `${dayName(game.year, p.startDay)}${PROMOS[p.kind].lengthDays > 1 ? ` – ${dayName(game.year, promoEnd(p))}` : ''}`
-        const open = openId === p.id
-        return (
-          <div key={p.id} className={`promo-booked ${status}`}>
-            {status === 'scheduled' ? (
-              <div className="panel price">
-                <span>{PROMOS[p.kind].name}<small className="block">{dates} · scheduled</small></span>
-                <button className="btn small-btn" onClick={() => onChange({ ...game, promos: cancelPromo(game.promos, p.id, today) })}>Cancel</button>
-              </div>
-            ) : (
-              <button className="panel price promo-tap" aria-expanded={open} onClick={() => setOpenId(open ? null : p.id)}>
-                <span>{PROMOS[p.kind].name}<small className="block">{dates} · tap for results</small></span>
-                <b className={`promo-status ${status}`}>{status === 'running' ? 'Running' : 'Completed'} {open ? '▴' : '▾'}</b>
-              </button>
-            )}
-            {open && status !== 'scheduled' && <PromoResultsCard game={game} promo={p} status={status} />}
-          </div>
-        )
-      })}
+      {game.promos.length === 0 ? <p className="hint">Nothing booked.</p> : (
+        <table className="rep-table promo-table">
+          <tbody>
+            {game.promos.map((p) => {
+              const status = promoStatus(p, today)
+              const dates = `${dayName(game.year, p.startDay)}${PROMOS[p.kind].lengthDays > 1 ? ` – ${dayName(game.year, promoEnd(p))}` : ''}`
+              const open = openId === p.id
+              return [
+                <tr key={p.id} className={status === 'scheduled' ? undefined : 'tap'} onClick={status === 'scheduled' ? undefined : () => setOpenId(open ? null : p.id)}>
+                  <th>{PROMOS[p.kind].name}<small>{dates}{status === 'scheduled' ? '' : ' · tap for results'}</small></th>
+                  <td>
+                    {status === 'scheduled' ? (
+                      <span className="promo-act">
+                        <span className="status">Scheduled</span>
+                        <button className="btn" onClick={() => onChange({ ...game, promos: cancelPromo(game.promos, p.id, today) })}>Cancel</button>
+                      </span>
+                    ) : (
+                      <span className={`status ${status}`} aria-expanded={open}>{status === 'running' ? 'Running' : 'Completed'} {open ? '▴' : '▾'}</span>
+                    )}
+                  </td>
+                </tr>,
+                open && status !== 'scheduled' ? (
+                  <tr key={`${p.id}-r`}><td colSpan={2} className="promo-cell"><PromoResultsCard game={game} promo={p} status={status} /></td></tr>
+                ) : null,
+              ]
+            })}
+          </tbody>
+        </table>
+      )}
       <h3 className="group">Book a campaign</h3>
       {msg && <p className="warn">{msg}</p>}
-      {PROMO_KINDS.map((k) => {
-        const s = PROMOS[k]
-        const day = start[k] ?? firstDay(k)
-        return (
-          <div key={k} className="promo-card">
-            <div className="promo-head"><b>{s.name}</b><span>{usd(s.costUsd)}</span></div>
-            <p>{s.blurb}</p>
-            <small>{s.lengthDays} day{s.lengthDays > 1 ? 's' : ''} · book {s.leadDays} day{s.leadDays > 1 ? 's' : ''} ahead{s.weekdaysOnly ? ' · weekdays only' : ''}</small>
-            <div className="promo-row">
-              <select value={day} aria-label={`${s.name} start`} onChange={(e) => setStart({ ...start, [k]: Number(e.target.value) })}>
-                {options(k).map((d) => <option key={d} value={d}>{dayName(game.year, d)}</option>)}
-              </select>
-              <button className="btn primary" onClick={() => {
-                const r = bookPromo(game.promos, k, day, today)
-                if (r.ok) { setMsg(null); onChange({ ...game, promos: r.promos }) } else setMsg(r.reason)
-              }}>Book</button>
-            </div>
-          </div>
-        )
-      })}
+      <table className="rep-table promo-table">
+        <tbody>
+          {PROMO_KINDS.map((k) => {
+            const s = PROMOS[k]
+            const day = start[k] ?? firstDay(k)
+            return (
+              <tr key={k}>
+                <th>
+                  {s.name} <b>{usd(s.costUsd)}</b>
+                  <small>{s.lengthDays}d · book {s.leadDays}d ahead{s.weekdaysOnly ? ' · weekdays only' : ''}. {s.blurb}</small>
+                </th>
+                <td>
+                  <span className="promo-act">
+                    <select value={day} aria-label={`${s.name} start`} onChange={(e) => setStart({ ...start, [k]: Number(e.target.value) })}>
+                      {options(k).map((d) => <option key={d} value={d}>{dayName(game.year, d)}</option>)}
+                    </select>
+                    <button className="btn primary" onClick={() => {
+                      const r = bookPromo(game.promos, k, day, today)
+                      if (r.ok) { setMsg(null); onChange({ ...game, promos: r.promos }) } else setMsg(r.reason)
+                    }}>Book</button>
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </>
   )
 }

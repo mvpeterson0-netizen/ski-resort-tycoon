@@ -25,7 +25,7 @@ with a reduced off-season (building, hiring, financing, summer activities).
 - **Visual style:** "Soft Trail" (owner pick from 7 + 2 blend options): Trail Map's
   cream/navy/green/blue/black palette with rounded Nunito type (bundled via
   @fontsource, weights 400 + 800 only), 20px corners, light borders, soft shadows,
-  gentler map relief and fainter contours. All colours are CSS variables in `:root`
+  gentler map relief and fainter contours. (Compact pass, owner request "less AI slop": corners now ~10px, no card shadows, 15px base font, table-style rows for lists, row cards with the action on the right; see the "Compact pass" block at the end of `src/index.css`.) All colours are CSS variables in `:root`
   (`src/index.css`), including the map palette (`--map-light/-shadow/--contour`).
 - **Land ownership (step 4):** land is bought outright (no Forest Service lease/permit
   model). Real-terrain sites are split into a 3×3 grid of parcels (`src/sim/parcels.ts`);
