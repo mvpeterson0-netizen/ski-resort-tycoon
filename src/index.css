@@ -327,3 +327,4 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .promo-row .btn { min-width: 88px; }
 
 .btn.small-btn { min-height: 40px; font-size: 0.9rem; padding: 0 14px; }
+.snap-hint { color: #1d6f94; font-weight: 800; }

@@ -48,6 +48,8 @@ export interface Trail {
   verticalM: number
   acres: number
   costUsd: number
+  /** Metres of the path shared with earlier runs (lengthM and costUsd are the new stretch only). */
+  sharedM?: number
 }
 
 export interface Lift {
@@ -267,6 +269,7 @@ export function buildTrail(g: GameState, plan: TrailPlan, name?: string): BuildR
   const trail: Trail = {
     id, name: name ?? `Trail ${g.trails.length + 1}`, points: plan.points, difficulty: plan.difficulty,
     lengthM: plan.lengthM, verticalM: plan.verticalM, acres: plan.acres, costUsd: plan.costUsd,
+    ...(plan.sharedM > 0 ? { sharedM: plan.sharedM } : {}),
   }
   return { ok: true, game: { ...g, cashUsd: g.cashUsd - plan.costUsd, trails: [...g.trails, trail], book: { ...g.book, capexUsd: g.book.capexUsd + plan.costUsd } } }
 }

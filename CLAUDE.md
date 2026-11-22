@@ -43,6 +43,14 @@ with a reduced off-season (building, hiring, financing, summer activities).
   are placed by tapping two stations (lower = bottom); types rope tow, fixed double,
   fixed quad. Everything must lie on owned parcels. All costs/capacities/speeds are
   PLACEHOLDER in `BUILD`. GameState v3 stores trails and lifts (v2 saves upgrade).
+- **Run merging (owner request; `src/sim/merge.ts`):** a drawn run that follows an existing one
+  (same direction, within 30 m for at least 60 m) snaps onto it and shares that stretch; the start
+  or end of a line within 30 m of a run snaps on as a junction/branch; a run that crosses at an
+  angle is left alone. The shared stretch is already cleared, so cost, `lengthM` (trail km, staff,
+  demand) and difficulty use only the new stretch (`Trail.sharedM` records the rest); a run that
+  only retraces an existing one is refused (needs 150 m of new run). The Build screen previews
+  the snap while drawing (blue pull lines, ring at the join), animates it on release and states
+  what is shared before you pay. Distances are PLACEHOLDER tuning.
 - **Run-difficulty overlay (owner request, step 5):** difficulty stays strict (black
   terrain makes black trails; no softening). Instead, site assessment shows each 10 m
   cell coloured by the class its slope would give (green/blue/black/hazard, light =

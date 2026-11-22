@@ -8,6 +8,7 @@
  */
 import { SLOPE, difficultyFor, pctToDeg, type Difficulty } from './difficulty'
 import { parcelAtCell, type Parcel } from './parcels'
+import { snapToRuns, type ExistingRun, type MergeSpan } from './merge'
 import { elevAt, slopeDeg, type Terrain } from './terrain'
 
 export type LiftType = 'ropeTow' | 'fixedDouble' | 'fixedQuad'
@@ -38,7 +39,19 @@ export const BUILD = {
 const M2_PER_ACRE = 4046.8564224
 
 export interface TrailPlan {
+  /** The run's full path, including any stretch shared with existing runs. */
   points: Pt[]
+  /** The line as drawn (resampled, downhill), before snapping: for the snap animation. */
+  rawPoints: Pt[]
+  /** Existing runs this one merges with or joins. */
+  merges: MergeSpan[]
+  /** Point i lies on an existing run. */
+  shared: boolean[]
+  /** Metres shared with existing runs (already cleared: not charged or counted again). */
+  sharedM: number
+  /** Length of the whole path, shared stretch included. */
+  fullLengthM: number
+  /** The new, billed length (full length minus the shared stretch). */
   lengthM: number
   verticalM: number
   avgSlopeDeg: number
@@ -96,25 +109,38 @@ export function allOwned(pts: Pt[], parcels: Parcel[], owned: string[]): boolean
   })
 }
 
-export function planTrail(t: Terrain, raw: Pt[], parcels: Parcel[], owned: string[]): TrailPlan {
+export function planTrail(t: Terrain, raw: Pt[], parcels: Parcel[], owned: string[], existing: ExistingRun[] = []): TrailPlan {
   const cfg = BUILD.trail
-  let pts = resample(raw, cfg.stepM / t.cellM)
+  let drawn = resample(raw, cfg.stepM / t.cellM)
   // Trails run downhill: flip a line drawn bottom-to-top.
-  if (pts.length > 1 && elevAt(t, ...pts[0]) < elevAt(t, ...pts[pts.length - 1])) pts = pts.reverse()
+  if (drawn.length > 1 && elevAt(t, ...drawn[0]) < elevAt(t, ...drawn[drawn.length - 1])) drawn = drawn.reverse()
+  // Pull the line onto any existing run it merges with or joins.
+  const snap = snapToRuns(drawn, existing, t.cellM)
+  const pts = snap.points
 
-  let lengthM = 0
+  let fullM = 0, sharedM = 0
   for (let i = 1; i < pts.length; i++) {
     const dx = (pts[i][0] - pts[i - 1][0]) * t.cellM
     const dy = (pts[i][1] - pts[i - 1][1]) * t.cellM
     const dz = elevAt(t, ...pts[i]) - elevAt(t, ...pts[i - 1])
-    lengthM += Math.hypot(dx, dy, dz)
+    const seg = Math.hypot(dx, dy, dz)
+    fullM += seg
+    if (snap.shared[i] && snap.shared[i - 1]) sharedM += seg
   }
-  const slopes = pts.map(([x, y]) => slopeDeg(t, Math.round(x), Math.round(y))).sort((a, b) => a - b)
+  const lengthM = fullM - sharedM
+  // Difficulty comes from the new stretch only: the shared part is already graded.
+  const own = pts.filter((_, i) => !snap.shared[i])
+  const slopes = own.map(([x, y]) => slopeDeg(t, Math.round(x), Math.round(y))).sort((a, b) => a - b)
   const steep = slopes.length ? slopes[Math.min(slopes.length - 1, Math.floor(slopes.length * 0.9))] : 0
   const verticalM = pts.length ? elevAt(t, ...pts[0]) - elevAt(t, ...pts[pts.length - 1]) : 0
   const acres = (lengthM * cfg.widthM) / M2_PER_ACRE
   const plan: TrailPlan = {
     points: pts,
+    rawPoints: drawn,
+    merges: snap.merges,
+    shared: snap.shared,
+    sharedM: Math.round(sharedM),
+    fullLengthM: Math.round(fullM),
     lengthM: Math.round(lengthM),
     verticalM: Math.round(verticalM),
     avgSlopeDeg: slopes.length ? slopes.reduce((s, v) => s + v, 0) / slopes.length : 0,
@@ -125,7 +151,9 @@ export function planTrail(t: Terrain, raw: Pt[], parcels: Parcel[], owned: strin
     costUsd: Math.round((acres * cfg.costPerAcreUsd) / 1000) * 1000,
     problems: [],
   }
-  if (lengthM < cfg.minLengthM) plan.problems.push(`Too short (min ${cfg.minLengthM} m)`)
+  if (lengthM < cfg.minLengthM) {
+    plan.problems.push(sharedM > 0 ? `Mostly follows an existing run (needs ${cfg.minLengthM} m of new run)` : `Too short (min ${cfg.minLengthM} m)`)
+  }
   if (plan.maxSlopeDeg > SLOPE.hazardFromDeg) plan.problems.push(`Crosses terrain too steep to ski (over ${SLOPE.hazardFromDeg}°)`)
   if (!allOwned(pts, parcels, owned)) plan.problems.push('Leaves land you own')
   return plan
