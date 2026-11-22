@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   LIVE, answerAfternoonOffer, answerLiveCard, checkAfternoon, checkParking, dayEnd, defaultHalfDayUsd, finishDay, setLiveApres, setLiveHalfDay, setLiveLate, setLiveOvertime, setLiveShuttle, forecast, liveDayDone, playTick, seasonDate, seasonInputs, setLiftMode, setLiveNight, setLiveNightPrice,
-  setLivePrice, siteById, startDay, tickTime, priceForDay, PRICING,
+  setLivePrice, siteById, startDay, tickTime, PRICING,
   type DayResult, type GameState, type LiftMode, type LiveDay,
 } from '../sim'
 import { usd } from './format'
@@ -41,8 +41,6 @@ const dateLabel = (iso: string) => {
 }
 const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
 
-/** PREVIEW (owner review): compact layouts for the mid-day controls, picked with ?ctl=x|y|z (default: the full list). */
-const CTL_VARIANT = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('ctl') : null) ?? 'now'
 type Tone = 'ok' | 'near' | 'full'
 const toneOf = (p: number): Tone => (p >= 1 ? 'full' : p >= 0.9 ? 'near' : 'ok')
 const TONE_FILL: Record<Tone, string> = { ok: '#3a9150', near: '#e0a526', full: '#c0503f' }
@@ -101,15 +99,13 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const [speed, setSpeed] = useState<number>(4)
   // Auto-play skips the end-of-day report; by default each open day ends with one.
   const [auto, setAuto] = useState(false)
-  const [tab, setTab] = useState<'controls' | 'forecast' | 'season'>('controls')
   const [last, setLast] = useState<DayResult | null>(null)
   /** Days covered by the report on screen (one day, or the days of a skip). */
   const [reportDays, setReportDays] = useState<DayResult[] | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [skipMenu, setSkipMenu] = useState(false)
-  /** Compact control layouts (preview): which option is open, and whether the drawer is expanded. */
+  /** Which control (or forecast / season) is open in the sheet over the map. */
   const [openOpt, setOpenOpt] = useState<string | null>(null)
-  const [more, setMore] = useState(false)
   const live = game.live
   const inp = useMemo(() => seasonInputs(game, site), [game, site])
   const routes = useMemo(() => buildRoutes(game.lifts, game.trails), [game.lifts, game.trails])
@@ -180,7 +176,6 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
     : game.lifts.map(() => 1)), [live, game.lifts])
   const lights = (inp.amenity?.nightShare ?? 0) > 0
   const season = game.season
-  const calendarPrice = season ? priceForDay(game.ticketPriceUsd, game.calendar, game.year, season.day) : price
   const focus = game.base && frame ? { x: frame.v[0] + frame.r[0], y: frame.v[1] + frame.r[1] + 2, metresAcross: 700 } : undefined
   const fc = season ? forecast(season, game.difficulty.snow) : []
 
@@ -195,14 +190,6 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
 
 
   // ---- Controls, as pieces the layouts arrange ----
-  const priceRow = live && (
-    <div className="live-row">
-      <span>Day ticket<small className="block">Now {money(price)} · calendar {money(calendarPrice)}</small></span>
-      <button className="btn" aria-label="Lower price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd - PRICING.stepUsd))}>−</button>
-      <b>${price}</b>
-      <button className="btn" aria-label="Raise price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd + PRICING.stepUsd))}>+</button>
-    </div>
-  )
   const liftChips = live && (
     <div className="chips">
       {game.lifts.map((l, i) => {
@@ -320,8 +307,11 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
               <button className="btn" onClick={onCalendar}>Open the calendar</button>
             </div>
   )
-  /** Toolbar layout: the open control (or forecast / season) in a sheet over the bottom of the map. */
-  const sheetBody = CTL_VARIANT !== 'z' || !openOpt || !live ? null
+  /** The open control (or forecast / season) in a sheet over the bottom of the map. */
+  const sheetBody = !openOpt ? null
+    : openOpt === 'forecast' ? forecastView
+    : openOpt === 'season' ? <div className="live-season"><SeasonSummary game={game} /></div>
+    : !live ? null
     : openOpt === 'lifts' ? <>{liftChips}<p className="hint small">Tap a lift to run it slowly; press and hold to close it.</p></>
     : openOpt === 'forecast' ? forecastView
     : openOpt === 'season' ? <div className="live-season"><SeasonSummary game={game} /></div>
@@ -375,55 +365,9 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         }
       }}
       panel={
-        <section className={`map-panel live-panel${CTL_VARIANT !== 'now' ? ` compact ctl-${CTL_VARIANT}` : ''}`}>
-          {CTL_VARIANT !== 'z' && (
-            <div className="seg" role="tablist">
-              {(['controls', 'forecast', 'season'] as const).map((k) => (
-                <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-                  {k === 'controls' ? 'Controls' : k === 'forecast' ? 'Forecast' : 'Season'}
-                </button>
-              ))}
-            </div>
-          )}
-          {live && CTL_VARIANT === 'now' && tab === 'controls' && (
-            <div className="live-controls">
-              {priceRow}
-              <p className="hint small">Applies to guests arriving from now. Season-pass holders are not affected.</p>
-              {liftChips}
-              <p className="hint small">Tap a lift to run it slowly (half capacity, cheaper) or back to full speed. Press and hold to close it (hold again to reopen).</p>
-              {options.map((o) => <div key={o.id}>{o.row}</div>)}
-              {promoNote}
-            </div>
-          )}
-          {live && CTL_VARIANT === 'x' && tab === 'controls' && (
-            <div className="live-controls">
-              {priceRow}
-              {liftChips}
-              <div className="opt-tiles">
-                {options.map((o) => (
-                  <button key={o.id} className={`opt-tile${o.on ? ' on' : ''}${o.alert ? ' alert' : ''}${openOpt === o.id ? ' open' : ''}`} onClick={() => setOpenOpt(openOpt === o.id ? null : o.id)}>
-                    <small>{o.label}</small><b>{o.state}</b>
-                  </button>
-                ))}
-              </div>
-              {openOpt && options.find((o) => o.id === openOpt)?.row}
-              {promoNote}
-            </div>
-          )}
-          {live && CTL_VARIANT === 'y' && tab === 'controls' && (
-            <div className="live-controls">
-              {priceRow}
-              {liftChips}
-              <button className="more-btn" onClick={() => setMore((m) => !m)}>
-                <span>More options{options.some((o) => o.on) ? <b> · {options.filter((o) => o.on).map((o) => o.label).join(', ')}</b> : null}{options.some((o) => o.alert) ? <b className="alert-dot"> · lot full</b> : null}</span>
-                <span>{more ? '▴' : '▾'}</span>
-              </button>
-              {more && options.map((o) => <div key={o.id}>{o.row}</div>)}
-              {promoNote}
-            </div>
-          )}
-          {live && CTL_VARIANT === 'z' && (
+        <section className="map-panel live-panel">
             <div className="opt-strip">
+              {live && (<>
               <div className="strip-price">
                 <button aria-label="Lower price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd - PRICING.stepUsd))}>−</button>
                 <b>${price}</b>
@@ -437,13 +381,12 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
                   {o.label}{o.on || o.alert ? ` · ${o.state}` : ''}
                 </button>
               ))}
+              </>)}
               <button className={`chip ghost${openOpt === 'forecast' ? ' sel' : ''}`} onClick={() => setOpenOpt(openOpt === 'forecast' ? null : 'forecast')}>Forecast</button>
               <button className={`chip ghost${openOpt === 'season' ? ' sel' : ''}`} onClick={() => setOpenOpt(openOpt === 'season' ? null : 'season')}>Season</button>
             </div>
-          )}
-          {tab === 'controls' && !live && <p className="hint">Next day starts shortly. {last && <b>Yesterday: {money(last.netUsd)}.</b>}</p>}
-          {CTL_VARIANT !== 'z' && tab === 'forecast' && forecastView}
-          {CTL_VARIANT !== 'z' && tab === 'season' && <div className="live-season"><SeasonSummary game={game} /></div>}
+          {promoNote}
+          {!live && <p className="hint">Next day starts shortly. {last && <b>Yesterday: {money(last.netUsd)}.</b>}</p>}
         </section>
       }
       actions={

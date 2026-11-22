@@ -509,35 +509,21 @@ html { font-size: 15px; }
 .rail-num b { font-size: 0.85rem; }
 .hud-bar ~ .hud-sheet { top: 52px; }
 
-/* PREVIEW (owner review): compact mid-day controls, ?ctl=x|y|z in the URL. */
-.live-panel.compact { max-height: 34dvh; }
-.compact .live-controls { gap: 6px; margin-top: 2px; }
-.compact .live-row .btn { min-height: 38px; min-width: 44px; }
-.compact .chips { margin-bottom: 0; }
-/* X: tiles. */
-.opt-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.opt-tile { font: inherit; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px;
-  padding: 4px 8px; min-height: 44px; display: flex; flex-direction: column; justify-content: center; }
-.opt-tile small { color: var(--muted); font-size: 0.7rem; font-weight: 800; }
-.opt-tile b { font-size: 0.85rem; }
-.opt-tile.on { border-color: var(--accent); background: #eaf1fa; }
-.opt-tile.on b { color: var(--accent); }
-.opt-tile.alert { background: var(--note-bg); border-color: #e0a526; }
-.opt-tile.open { outline: 2px solid var(--accent); outline-offset: -1px; }
-/* Y: drawer. */
-.more-btn { font: inherit; display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; border: 1px solid var(--line);
-  background: var(--surface); color: var(--ink); border-radius: 8px; min-height: 40px; padding: 0 10px; font-size: 0.85rem; text-align: left; }
-.more-btn b { color: var(--accent); }
-.more-btn .alert-dot { color: var(--danger); }
-/* Z: toolbar strip + sheet over the map. */
-.ctl-z { padding-top: 8px; min-height: 0; }
+/* Live day controls (owner pick: toolbar): one strip of buttons under the map; tapping one opens its
+   control in a sheet over the bottom of the map. */
+.live-panel { padding-top: 8px; min-height: 0; }
+.live-panel .hint.small { margin-top: 4px; }
 .opt-strip { display: flex; flex-wrap: wrap; gap: 6px; }
 .opt-strip .chip { min-height: 34px; }
+.opt-strip .chip.on { border-color: var(--accent); background: #eaf1fa; color: var(--accent); font-weight: 800; }
 .strip-price { display: flex; align-items: center; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface); }
 .strip-price button { font: inherit; border: 0; background: none; width: 34px; min-height: 32px; font-size: 1.1rem; font-weight: 800; color: var(--accent); }
+.strip-price button:disabled { opacity: 0.4; }
 .strip-price b { padding: 0 2px; font-size: 0.9rem; }
 .chip.sel { outline: 2px solid var(--accent); outline-offset: -1px; }
 .chip.alert { background: var(--note-bg); border-color: #e0a526; color: #6b5310; font-weight: 800; }
 .chip.ghost { color: var(--muted); }
 .ctl-sheet { position: absolute; left: 8px; right: 8px; bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px 44px 10px 12px; box-shadow: var(--shadow); max-height: 55%; overflow-y: auto; z-index: 3; }
+.ctl-sheet .live-row .btn { min-height: 40px; min-width: 44px; }
+.ctl-sheet .chips { flex-wrap: wrap; margin-bottom: 0; }

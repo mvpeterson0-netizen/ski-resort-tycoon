@@ -226,8 +226,11 @@ with a reduced off-season (building, hiring, financing, summer activities).
   (`parkedCars` in `art.ts`: exactly that share of spaces, nearest lot first). Balance: year 1 identical, yr 5 op
   profit median +9%, yr 15 net worth median −4%, 0% bankrupt. Live metrics (owner pick: option C): dark
   full-width top bar (date, time, net today, home), ring gauges down the right edge (parking, lifts, line, on
-  hill, skiers today), snow base and conditions as pills along the bottom of the map. Compact mid-day control
-  layouts (PREVIEW, `?ctl=x|y|z`: tiles / drawer / toolbar + sheet; default = full list) await owner pick.
+  hill, skiers today), snow base and conditions as pills along the bottom of the map. Mid-day controls (owner pick:
+  toolbar, shipped): one strip under the map — ticket price −/+, Lifts n/N, Overtime, Half-day, Après, Shuttle
+  (amber "Lot full" when turning cars away), To 5 pm, Night (with lights), Forecast, Season; switched-on options
+  show their state in blue. Tapping one opens its full control in a sheet over the bottom of the map (×
+  closes). The Controls/Forecast/Season tabs and most help text are gone (lift card keeps a one-line hint).
 - **Extended hours and the 2 pm check (owner request; `liveDay.ts`):** "Open to 5 pm" adds two day ticks
   (16:00–17:00) before any night session: extra late arrivals (weights 6+5 on the day profile) at a 60% twilight
   ticket, crew paid ×1.5, lifts and half the overhead. Switchable until 4 pm. Overtime crew can now be called in
