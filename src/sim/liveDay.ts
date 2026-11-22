@@ -38,7 +38,7 @@ export const LIVE = {
   dayWeights: [10, 13, 12, 10, 8, 7, 7, 6, 5, 5, 4, 4, 3, 3],
   nightWeights: [14, 18, 18, 16, 14, 10, 6, 4],
   /** Night session demand as a share of the day's market (mostly locals). */
-  nightMarketShare: 0.2,
+  nightMarketShare: 0.3,
   nightRefPriceUsd: 35,
   /** Pass holders' night visits relative to their day visits. */
   nightPassShare: 0.12,

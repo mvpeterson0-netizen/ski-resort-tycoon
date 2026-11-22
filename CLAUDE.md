@@ -148,6 +148,30 @@ with a reduced off-season (building, hiring, financing, summer activities).
   Tabs: Resort / Build / Village / Prices / Staff / Money; ☰ menu: Land, Settings, Main menu.
   Trees use a PLACEHOLDER 3,500 m treeline (no land-cover data). Sites without terrain keep
   the old list-style home.
+- **Live day (owner request, step 10; `src/sim/liveDay.ts`, `cards.ts`, `pricing.ts`, `promos.ts`,
+  `forecast.ts`, `src/ui/LiveDay.tsx`, `Prices.tsx`):** a season day plays in 30-minute ticks
+  (9:00–16:00, plus an optional 17:00–21:00 night session with lights). Same demand/capacity/cost
+  formulas as the old whole-day model with arrivals spread by a fixed profile, so totals match it
+  (verified against recorded reference days; balance unchanged). `simulateDay`/`advanceDay` are
+  the batch path (defaults, cards auto-answered) used by the auto-player and tests; the live
+  screen steps the day itself and saves it mid-day (`GameState.live`). Playback 1×/4×/8× is
+  screen time only (8 s per tick at 1×); Skip day/week/season stops at an event card.
+  Live decisions: ticket price (applies to later arrivals), lifts open/slow/closed (slow = half
+  capacity, 70% cost), night on/off, event cards. **Pass holders are never affected by daily
+  prices or promos.** Day-ticket weekend demand is already higher in the sim.
+- **Price calendar (`GameState.calendar`, v12):** weekday price = `ticketPriceUsd`; weekend (×1.15)
+  and holiday (×1.30) default to a markup until the player sets them; night price $35; per-day
+  plans (price override, night, overtime crew +15% lift capacity / +25% payroll, snowmaking push
+  +4" base × coverage) cleared each season. Holidays are the sim's holidays (Dec 24–Jan 1, MLK and
+  Presidents' Day Sat–Mon). Marketing promos: social, radio, travel partner (visitors only),
+  midweek 2-for-1 (×1.6 demand, 60% revenue per ticket), powder alert; booked with a lead time,
+  cost paid on the first day, stacking capped at ×1.7. Night lighting is an amenity (2 levels, lit
+  share 35%/70% of lift capacity, power+crew per night run). All PLACEHOLDER.
+- **Event cards:** each event pauses the day with 2 options (e.g. lift breakdown: standard repair or
+  2.2× rush crew back in 2 h; outage: wait or generators; lawsuit: settle or fight; race: host or
+  decline; new group-booking offers). The default option reproduces the old automatic outcome.
+  Events happen at a random tick, not for the whole day. 5-day forecast shows the real upcoming
+  weather with widening ranges (`forecast.ts`).
 - **Building levels (extended to match the art):** lodge 0–4 (warming hut → grand lodge),
   rentals 1–3, school 1–3 with diminishing spend per level. All PLACEHOLDER.
 - **Saves:** single slot in localStorage (`src/ui/storage.ts`), versioned `GameState`
@@ -225,6 +249,8 @@ pass sales → daily winter sim → year-end P&L → debt service → reputation
 9. Base village + bird's-eye home: base siting with real roads, village package in the
    mortgage, pre-rendered building art by level, tabbed home. (done) Next ideas: build mode
    on the painted map, lifts tied to the base, 3D cars in parking, animated chairs/skiers.
+10. Live day: hourly playback with skiers, price calendar, promos, night skiing, event cards,
+    forecast, skip. (built on branch; awaiting owner review before deploy)
 8. Breakdowns, staff, snowmaking, base area, summer, remaining sites.
 
 ## Commands

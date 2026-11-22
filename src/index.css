@@ -258,3 +258,72 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .bcard > div { padding-right: 32px; }
 .map-loading { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; }
 .tabbar button:disabled { opacity: 0.4; }
+
+/* Live day */
+.speedbar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; }
+.speedbar button { font: inherit; font-weight: 800; min-height: 48px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.speedbar button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.speedbar button.skip { color: var(--ink); }
+.live-panel { max-height: 38dvh; overflow-y: auto; }
+.live-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.live-row { display: flex; align-items: center; gap: 8px; }
+.live-row > span { flex: 1; }
+.live-row .btn { min-height: 44px; min-width: 52px; padding: 0 12px; }
+.live-row b { min-width: 44px; text-align: center; }
+.live-panel .hint.small { margin: 0; }
+.chip.lift-slow { background: #fff3d6; border-color: #e4b33a; color: #6b5310; }
+.chip.lift-closed { background: #f4d6d1; border-color: #c0503f; color: #7d2417; }
+.chip.lift-down { background: #f4d6d1; border-color: #c0503f; color: #7d2417; opacity: 0.7; }
+.forecast { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.fc-day { display: grid; grid-template-columns: 1.1fr auto 1fr 1.4fr; gap: 6px; align-items: center; font-size: 0.82rem; }
+.fc-day .pill { text-transform: capitalize; justify-self: start; }
+.live-season { margin-top: 8px; }
+.season-summary .content { padding: 0; }
+.card-overlay { position: absolute; inset: 0; background: rgba(30, 40, 55, 0.45); display: flex; align-items: flex-end; justify-content: center; padding: 12px; z-index: 5; }
+.event-card { background: var(--surface); border-radius: 24px; padding: 16px; width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow); }
+.event-card h3 { margin: 0; font-size: 1.25rem; }
+.event-card p { margin: 0; color: var(--muted); line-height: 1.4; }
+.event-card small { color: var(--muted); }
+.event-card .btn { text-align: left; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; min-height: 60px; justify-content: center; }
+.event-card .btn small { font-weight: 400; color: inherit; opacity: 0.85; }
+.toast { position: absolute; left: 12px; right: 12px; top: 120px; margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); font-weight: 800; z-index: 3; }
+.day-summary { position: absolute; left: 12px; right: 12px; bottom: 36px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--shadow); z-index: 3; }
+.day-summary span { color: var(--muted); }
+.day-end { position: absolute; left: 0; right: 0; bottom: 40px; margin: 0; pointer-events: none; font-weight: 800; }
+.skip-sheet { top: auto; bottom: 38px; right: 8px; z-index: 4; }
+.auto-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; padding: 4px 6px; }
+.hud-chips .neg { color: var(--danger); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Calendar and marketing */
+.badge-inline { margin-left: 8px; font-style: normal; font-size: 0.7rem; font-weight: 800; background: var(--bg); color: var(--muted); border-radius: 999px; padding: 1px 8px; }
+.link { border: 0; background: none; color: var(--accent); font: inherit; font-size: 0.8rem; font-weight: 800; padding: 4px 0; display: block; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.78rem; color: var(--muted); margin: 4px 0 8px; }
+.cal-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -1px; margin-right: 4px; }
+.wk { background: var(--surface); border: 1px solid var(--line); }
+.we { background: #e6eefb; }
+.ho { background: #fde7c8; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-h { text-align: center; font-size: 0.7rem; color: var(--muted); }
+.cal-day { font: inherit; border: 1px solid var(--line); border-radius: 12px; min-height: 54px; padding: 3px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink); line-height: 1.1; position: relative; }
+.cal-day small { font-size: 0.68rem; color: var(--muted); }
+.cal-day b { font-size: 0.8rem; }
+.cal-day.we { background: #e6eefb; }
+.cal-day.ho { background: #fde7c8; }
+.cal-day.ovr b { color: var(--accent); text-decoration: underline; }
+.cal-day.sel { outline: 2px solid var(--accent); }
+.cal-day.past, .cal-day:disabled { opacity: 0.4; }
+.cal-flags { position: absolute; top: 1px; right: 4px; font-size: 0.6rem; color: var(--accent); }
+.day-editor { position: sticky; bottom: 76px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 12px; margin-top: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; }
+.day-editor-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.day-editor .bcard-x { position: static; }
+.toggle-row { display: flex; align-items: flex-start; gap: 10px; padding: 4px 2px; }
+.toggle-row input { width: 22px; height: 22px; margin-top: 2px; }
+.promo-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
+.promo-card p { margin: 0; color: var(--muted); }
+.promo-head { display: flex; justify-content: space-between; }
+.promo-row { display: flex; gap: 8px; margin-top: 4px; }
+.promo-row select { flex: 1; font: inherit; border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; min-height: 48px; background: var(--bg); color: var(--ink); }
+.promo-row .btn { min-width: 88px; }
+
+.btn.small-btn { min-height: 40px; font-size: 0.9rem; padding: 0 14px; }

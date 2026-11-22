@@ -171,37 +171,6 @@ export function ResortHome({ game, onChange, onMap, onBuild, onSeason, onSetting
   )
 }
 
-/** Prices tab: day ticket (any time) and season pass (off-season), plus last season. */
-export function PricesScreen({ game, onChange, onBack }: { game: GameState; onChange: (g: GameState) => void; onBack: () => void }) {
-  const site = siteById(game.siteId)
-  const inSeason = game.phase === 'season'
-  return (
-    <main className="screen">
-      <h2 className="screen-title">Prices</h2>
-      <div className="content">
-        {site && (
-          <PricingPanel
-            game={game} onChange={onChange} inSeason={inSeason}
-            estimate={inSeason ? null : estimatePassSales(game.year, seasonInputs(game, site), game.passPriceUsd, game.ticketPriceUsd)}
-          />
-        )}
-        {game.lastSeason && (
-          <>
-            <h3 className="group">Last season (year {game.lastSeason.year})</h3>
-            <dl className="traits">
-              <div className="trait"><dt>Days open</dt><dd>{game.lastSeason.openDays} of {game.lastSeason.days}</dd></div>
-              <div className="trait"><dt>Skier visits</dt><dd>{game.lastSeason.guests.toLocaleString()}</dd></div>
-              <div className="trait"><dt>Passes sold</dt><dd>{game.lastSeason.passesSold.toLocaleString()}</dd></div>
-              <div className="trait"><dt>Operating profit</dt><dd>{usd(game.lastSeason.netUsd)}</dd></div>
-            </dl>
-          </>
-        )}
-      </div>
-      <nav className="actions"><button className="btn" onClick={onBack}>Back to resort</button></nav>
-    </main>
-  )
-}
-
 /** Day ticket and season pass prices, with a live pass-sales estimate in the off-season. */
 function PricingPanel({ game, onChange, estimate, inSeason = false }: {
   game: GameState; onChange: (g: GameState) => void; estimate: { passesSold: number; revenueUsd: number } | null; inSeason?: boolean

@@ -102,11 +102,13 @@ export interface MapViewProps {
   zoomBoost?: number
   /** Overlays above the canvas (HUD, popups). */
   children?: ReactNode
+  /** Redraw every frame (moving skiers). Off by default: the map only redraws on gestures. */
+  animate?: boolean
 }
 
 export function MapView({
   terrainId, onBack, backLabel = 'Back to site', overlay, onTapCell, onTerrain, panel, actions,
-  drawing, onStrokeMove, onStrokeEnd, base: makeBase, focus, bare, zoomBoost = 1, children,
+  drawing, onStrokeMove, onStrokeEnd, base: makeBase, focus, bare, zoomBoost = 1, children, animate,
 }: MapViewProps) {
   const maxZoom = MAX_ZOOM * zoomBoost
   const focusRef = useRef(focus)
@@ -165,6 +167,17 @@ export function MapView({
     v.tx = mw <= w ? (w - mw) / 2 : Math.min(0, Math.max(w - mw, v.tx))
     v.ty = mh <= h ? (h - mh) / 2 : Math.min(0, Math.max(h - mh, v.ty))
   }
+
+  // Animation loop: redraw each frame while asked to.
+  useEffect(() => {
+    if (!animate) return
+    let raf = 0
+    const loop = () => { draw(); raf = requestAnimationFrame(loop) }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+    // draw only reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animate])
 
   // Load data and build the base image.
   useEffect(() => {

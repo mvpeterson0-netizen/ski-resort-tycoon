@@ -1,5 +1,5 @@
 import {
-  ROLES, ROLE_SPECS, SEASON, advanceDay, effectiveBase, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, setTicketPrice, siteById, staffing,
+  ROLES, ROLE_SPECS, effectiveBase, liftComfortGuests, seasonDate, seasonInputs, seasonTotals, siteById, staffing,
   type DayResult, type GameState,
 } from '../sim'
 import { usd } from './format'
@@ -35,9 +35,8 @@ function GuestBars({ days, cap }: { days: DayResult[]; cap: number }) {
   )
 }
 
-export function SeasonScreen({ game, onChange, onExit }: {
-  game: GameState; onChange: (g: GameState) => void; onExit: () => void
-}) {
+/** Season status: snow, the last day, recent events and season totals. Shown inside the live screen. */
+export function SeasonSummary({ game }: { game: GameState }) {
   const site = siteById(game.siteId)!
   const season = game.season
   const today = season?.days.at(-1) ?? null
@@ -50,20 +49,10 @@ export function SeasonScreen({ game, onChange, onExit }: {
   const recent = (season?.days ?? []).slice(0, -1).flatMap((d) => (d.events ?? []).map((e) => ({ d, e }))).slice(-5).reverse()
   const shortRoles = ROLES.filter((r) => staff.needed[r] > 0 && staff.effects.ratios[r] < 0.999)
 
-  const step = (n: number) => {
-    let g = game
-    for (let i = 0; i < n && g.phase === 'season'; i++) g = advanceDay(g, site).game
-    onChange(g)
-  }
-
   if (!season) return null // the app shows the year-end report once the season closes
 
   return (
-    <main className="screen">
-      <div className="season-head">
-        <h2 className="screen-title">{today ? dayLabel(today) : 'Opening soon'}</h2>
-        <span>Day {season.day} of {SEASON.lengthDays}{today?.holiday && <b className="tag">Holiday</b>}</span>
-      </div>
+    <div className="season-summary">
       <div className="content">
         <section className="panel snow">
           <div>
@@ -96,6 +85,7 @@ export function SeasonScreen({ game, onChange, onExit }: {
 
         {today && (
           <>
+            <h3 className="group">Last day · {dayLabel(today)}{today.holiday ? ' (holiday)' : ''}</h3>
             {today.events.length > 0 && (
               <ul className="events">
                 {today.events.map((e, i) => (
@@ -108,7 +98,6 @@ export function SeasonScreen({ game, onChange, onExit }: {
                 ))}
               </ul>
             )}
-            <h3 className="group">Today</h3>
             <dl className="traits">
               <div className="trait">
                 <dt>Guests</dt>
@@ -155,21 +144,7 @@ export function SeasonScreen({ game, onChange, onExit }: {
           <div><span>Rentals & lessons</span><b>{usd(totals!.extrasRevenueUsd)}</b></div>
         </div>
 
-        <div className="panel price">
-          <span>Day ticket</span>
-          <button className="btn" aria-label="Lower price" onClick={() => onChange(setTicketPrice(game, season.ticketPriceUsd - 5))}>−</button>
-          <b>${season.ticketPriceUsd}</b>
-          <button className="btn" aria-label="Raise price" onClick={() => onChange(setTicketPrice(game, season.ticketPriceUsd + 5))}>+</button>
-        </div>
-        <p className="foot">All guest, price and cost figures are placeholders.</p>
       </div>
-      <nav className="actions">
-        <button className="btn primary" onClick={() => step(1)}>Next day</button>
-        <div className="row">
-          <button className="btn" onClick={onExit}>Resort</button>
-          <button className="btn" onClick={() => step(7)}>Sim 7 days</button>
-        </div>
-      </nav>
-    </main>
+    </div>
   )
 }

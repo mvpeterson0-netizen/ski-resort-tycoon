@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { beginSeason, newGame, regionById, setDifficulty, siteById, type BasePlacement, type GameState, type Parcel, type Region, type Site } from './sim'
 import { BaseAreaScreen } from './ui/BaseArea'
 import { BuildScreen } from './ui/Build'
-import { SeasonScreen } from './ui/Season'
+import { LiveDayScreen } from './ui/LiveDay'
 import { SettingsScreen } from './ui/Settings'
 import { StaffScreen } from './ui/Staff'
 import { BankruptScreen, FinanceScreen, YearEndScreen } from './ui/Finance'
 import { MapView } from './ui/MapView'
 import { ParcelPicker, ResortMap } from './ui/ParcelMap'
-import { PricesScreen, PurchaseScreen, ResortHome } from './ui/Purchase'
+import { PurchaseScreen, ResortHome } from './ui/Purchase'
+import { PricesScreen } from './ui/Prices'
 import { BaseSitePicker } from './ui/BaseSitePicker'
 import { ResortView } from './ui/ResortView'
 import { RegionPicker, SiteDetail, SitePicker, TitleScreen } from './ui/Screens'
@@ -41,7 +42,7 @@ export default function App() {
   const persist = (g: GameState) => { saveGame(g); setGame(g) }
 
   // A bankrupt resort can only be reviewed and restarted.
-  if (game?.bankrupt && ['home', 'build', 'finance', 'resortMap'].includes(nav.screen)) {
+  if (game?.bankrupt && ['home', 'build', 'finance', 'resortMap', 'season'].includes(nav.screen)) {
     return (
       <BankruptScreen
         game={game}
@@ -191,7 +192,7 @@ export default function App() {
       if (!game) return null
       return (
         game.phase === 'season' ? (
-          <SeasonScreen game={game} onChange={persist} onExit={() => setNav({ screen: 'home' })} />
+          <LiveDayScreen game={game} onChange={persist} onExit={() => setNav({ screen: 'home' })} onCalendar={() => setNav({ screen: 'prices' })} />
         ) : (
           <YearEndScreen game={game} onContinue={() => setNav({ screen: 'home' })} />
         )
