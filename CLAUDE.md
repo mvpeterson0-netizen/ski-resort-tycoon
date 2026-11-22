@@ -224,8 +224,10 @@ with a reduced off-season (building, hiring, financing, summer activities).
   crowd leaves (~2 pm, fixed 5-hour stay), so a mobbed day passes up to ~1.7× the rating. Groups take room too.
   `lotPct`/`liftPct` on each tick are occupancy now (on hill ÷ room at once); `lotFill` drives the cars drawn
   (`parkedCars` in `art.ts`: exactly that share of spaces, nearest lot first). Balance: year 1 identical, yr 5 op
-  profit median +9%, yr 15 net worth median −4%, 0% bankrupt. Live HUD layout options (PREVIEW, `?hud=a|b|c`
-  in the URL; default unchanged) await owner pick.
+  profit median +9%, yr 15 net worth median −4%, 0% bankrupt. Live metrics (owner pick: option C): dark
+  full-width top bar (date, time, net today, home), ring gauges down the right edge (parking, lifts, line, on
+  hill, skiers today), snow base and conditions as pills along the bottom of the map. Compact mid-day control
+  layouts (PREVIEW, `?ctl=x|y|z`: tiles / drawer / toolbar + sheet; default = full list) await owner pick.
 - **Extended hours and the 2 pm check (owner request; `liveDay.ts`):** "Open to 5 pm" adds two day ticks
   (16:00–17:00) before any night session: extra late arrivals (weights 6+5 on the day profile) at a 60% twilight
   ticket, crew paid ×1.5, lifts and half the overhead. Switchable until 4 pm. Overtime crew can now be called in

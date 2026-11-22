@@ -41,27 +41,14 @@ const dateLabel = (iso: string) => {
 }
 const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
 
-/** PREVIEW (owner review): layout options for the live metrics, picked with ?hud=a|b|c (default: the current chips). */
-const HUD_VARIANT = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hud') : null) ?? 'now'
+/** PREVIEW (owner review): compact layouts for the mid-day controls, picked with ?ctl=x|y|z (default: the full list). */
+const CTL_VARIANT = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('ctl') : null) ?? 'now'
 type Tone = 'ok' | 'near' | 'full'
 const toneOf = (p: number): Tone => (p >= 1 ? 'full' : p >= 0.9 ? 'near' : 'ok')
 const TONE_FILL: Record<Tone, string> = { ok: '#3a9150', near: '#e0a526', full: '#c0503f' }
 const pctText = (p: number) => `${Math.min(100, Math.round(p * 100))}%`
 
-/** Option A: a labelled bar gauge. */
-function Gauge({ label, pct, note }: { label: string; pct: number; note?: string }) {
-  const tone = toneOf(pct)
-  return (
-    <div className={`gauge ${tone}`}>
-      <small>{label}</small>
-      <b>{pct >= 1 ? 'FULL' : pctText(pct)}</b>
-      <i><em style={{ width: `${Math.min(100, pct * 100)}%`, background: TONE_FILL[tone] }} /></i>
-      {note && <small className="gauge-note">{note}</small>}
-    </div>
-  )
-}
-
-/** Option C: a ring gauge. */
+/** A ring gauge for the rail down the right edge of the map. */
 function Ring({ label, pct, text }: { label: string; pct: number; text?: string }) {
   const tone = toneOf(pct)
   const deg = Math.min(360, Math.max(0, pct) * 360)
@@ -73,40 +60,6 @@ function Ring({ label, pct, text }: { label: string; pct: number; text?: string 
       <small>{label}</small>
     </div>
   )
-}
-
-/** Option B: a rounded badge drawn on the map, constant size on screen. */
-function drawBadge(ctx: CanvasRenderingContext2D, scale: number, x: number, y: number, title: string, value: string, tone: Tone, pct?: number, avoid: number[][] = []): number[] {
-  const fs = 12 / scale
-  ctx.save()
-  ctx.font = `800 ${fs}px Nunito, sans-serif`
-  const tw = ctx.measureText(title).width, vw = ctx.measureText(value).width
-  const w = tw + vw + fs * 2.2, h = fs * (pct !== undefined ? 2.5 : 2)
-  const bx = x - w / 2
-  let by = y - h
-  // Move up past any badge already drawn here.
-  for (const [ax, ay, aw, ah] of avoid) if (bx < ax + aw && bx + w > ax && by < ay + ah + fs * 0.8 && by + h + fs * 0.8 > ay) by = ay - h - fs * 0.9
-  ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = 6 / scale; ctx.shadowOffsetY = 1 / scale
-  ctx.fillStyle = tone === 'ok' ? 'rgba(255,253,248,0.97)' : TONE_FILL[tone]
-  ctx.beginPath(); ctx.roundRect(bx, by, w, h, fs * 0.6); ctx.fill()
-  ctx.shadowColor = 'transparent'
-  // Pointer to the thing it describes.
-  ctx.beginPath(); ctx.moveTo(x - fs * 0.5, by + h); ctx.lineTo(x, by + h + fs * 0.6); ctx.lineTo(x + fs * 0.5, by + h); ctx.fill()
-  ctx.textBaseline = 'middle'
-  const ty = by + fs * 1.0
-  ctx.fillStyle = tone === 'ok' ? '#6b7882' : 'rgba(255,255,255,0.85)'
-  ctx.fillText(title, bx + fs * 0.7, ty)
-  ctx.fillStyle = tone === 'ok' ? '#2b3a46' : '#fff'
-  ctx.fillText(value, bx + fs * 1.5 + tw, ty)
-  if (pct !== undefined) {
-    const bw = w - fs * 1.4
-    ctx.fillStyle = tone === 'ok' ? 'rgba(43,58,70,0.12)' : 'rgba(255,255,255,0.35)'
-    ctx.fillRect(bx + fs * 0.7, by + h - fs * 0.6, bw, fs * 0.25)
-    ctx.fillStyle = tone === 'ok' ? TONE_FILL.ok : '#fff'
-    ctx.fillRect(bx + fs * 0.7, by + h - fs * 0.6, bw * Math.min(1, pct), fs * 0.25)
-  }
-  ctx.restore()
-  return [bx, by, w, h]
 }
 
 /** Net so far today: takings minus costs, event income and costs included. */
@@ -154,6 +107,9 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const [reportDays, setReportDays] = useState<DayResult[] | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [skipMenu, setSkipMenu] = useState(false)
+  /** Compact control layouts (preview): which option is open, and whether the drawer is expanded. */
+  const [openOpt, setOpenOpt] = useState<string | null>(null)
+  const [more, setMore] = useState(false)
   const live = game.live
   const inp = useMemo(() => seasonInputs(game, site), [game, site])
   const routes = useMemo(() => buildRoutes(game.lifts, game.trails), [game.lifts, game.trails])
@@ -237,6 +193,140 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const tapMode = (m: LiftMode): LiftMode => (m === 'open' ? 'slow' : 'open')
   const holdMode = (m: LiftMode): LiftMode => (m === 'closed' ? 'open' : 'closed')
 
+
+  // ---- Controls, as pieces the layouts arrange ----
+  const priceRow = live && (
+    <div className="live-row">
+      <span>Day ticket<small className="block">Now {money(price)} · calendar {money(calendarPrice)}</small></span>
+      <button className="btn" aria-label="Lower price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd - PRICING.stepUsd))}>−</button>
+      <b>${price}</b>
+      <button className="btn" aria-label="Raise price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd + PRICING.stepUsd))}>+</button>
+    </div>
+  )
+  const liftChips = live && (
+    <div className="chips">
+      {game.lifts.map((l, i) => {
+        const st = liftState(i)
+        return (
+          <LiftChip
+            key={l.id} disabled={st.down || done || !live.prep.open}
+            className={`chip lift-${st.label.toLowerCase()}${st.label === 'Open' ? '' : ' on'}`}
+            onTap={() => edit((x) => setLiftMode(x, i, tapMode(x.lifts[i])))}
+            onHold={() => edit((x) => setLiftMode(x, i, holdMode(x.lifts[i])))}
+          >
+            {l.name} · {st.label}
+          </LiftChip>
+        )
+      })}
+    </div>
+  )
+  const promoNote = live && (live.promo.dayDemandMult > 1 || live.promo.visitorMult > 1) ? <p className="hint small">A marketing campaign is running today.</p> : null
+  const lotFullNow = !!live && !live.shuttle && (row?.turnedAway ?? 0) > 0 && live.acc.parkingAway > 0
+  /** The optional actions: a short label and state for compact layouts, and the full row. */
+  const options: { id: string; label: string; state: string; on: boolean; alert?: boolean; row: ReactNode }[] = !live ? [] : [
+    ...(lights ? [{
+      id: 'night', label: 'Night', state: live.night ? money(live.nightPriceUsd) : 'Off', on: !!live.night,
+      row: (
+        <div className="live-row">
+          <span>Night session<small className="block">{live.night ? `5:00–9:00 pm · night ticket ${money(live.nightPriceUsd)}` : 'Off'}</small></span>
+          <button className={live.night ? 'btn primary' : 'btn'} disabled={live.tick > dayEnd(live)} onClick={() => edit((l) => setLiveNight(l, !l.night))}>
+            {live.night ? 'On' : 'Off'}
+          </button>
+          {live.night && live.tick <= dayEnd(live) && (
+            <>
+              <button className="btn" aria-label="Lower night price" onClick={() => edit((l) => setLiveNightPrice(l, l.nightPriceUsd - PRICING.stepUsd))}>−</button>
+              <button className="btn" aria-label="Raise night price" onClick={() => edit((l) => setLiveNightPrice(l, l.nightPriceUsd + PRICING.stepUsd))}>+</button>
+            </>
+          )}
+        </div>
+      ),
+    }] : []),
+    {
+      id: 'overtime', label: 'Overtime', state: live.ops.overtime ? 'On' : 'Off', on: !!live.ops.overtime,
+      row: (
+        <div className="live-row">
+          <span>Overtime crew<small className="block">{live.ops.overtime ? '+15% lift capacity, +25% payroll for the rest of the day' : 'Off'}</small></span>
+          <button className={live.ops.overtime ? 'btn primary' : 'btn'} disabled={done || live.tick >= dayEnd(live) || !!live.ops.overtime} onClick={() => edit((l) => setLiveOvertime(l, true))}>
+            {live.ops.overtime ? 'On' : 'Call in'}
+          </button>
+        </div>
+      ),
+    },
+    {
+      id: 'half', label: 'Half-day', state: live.halfDayUsd ? money(live.halfDayUsd) : 'Off', on: !!live.halfDayUsd,
+      row: (
+        <div className="live-row">
+          <span>Half-day ticket<small className="block">{live.halfDayUsd ? `From noon · ${money(live.halfDayUsd)}` : 'Not sold today'}</small></span>
+          <button className={live.halfDayUsd ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveHalfDay(l, l.halfDayUsd ? null : defaultHalfDayUsd(l.priceUsd)))}>
+            {live.halfDayUsd ? 'On' : 'Off'}
+          </button>
+          {!!live.halfDayUsd && !done && live.tick < LIVE.dayTicks && (
+            <>
+              <button className="btn" aria-label="Lower half-day price" onClick={() => edit((l) => setLiveHalfDay(l, (l.halfDayUsd ?? 0) - PRICING.stepUsd))}>−</button>
+              <button className="btn" aria-label="Raise half-day price" onClick={() => edit((l) => setLiveHalfDay(l, (l.halfDayUsd ?? 0) + PRICING.stepUsd))}>+</button>
+            </>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'apres', label: 'Après', on: !!live.apres,
+      state: live.apresResult ? money(live.apresResult.revenueUsd - live.apresResult.costUsd) : live.apres ? '3 pm' : 'Off',
+      row: (
+        <div className="live-row">
+          <span>Après special<small className="block">{live.apresResult
+            ? `Seated ${live.apresResult.served} of ${live.apresResult.wanted} · ${money(live.apresResult.revenueUsd - live.apresResult.costUsd)}`
+            : live.apres ? `Booked for 3 pm · ${inp.amenity?.lodgeSeats ?? '—'} seats` : `3 pm at the lodge · ${inp.amenity?.lodgeSeats ?? '—'} seats`}</small></span>
+          <button className={live.apres ? 'btn primary' : 'btn'} disabled={done || live.tick > LIVE.apresFromTick || !!live.apresResult} onClick={() => edit((l) => setLiveApres(l, !l.apres))}>
+            {live.apres ? 'On' : 'Off'}
+          </button>
+        </div>
+      ),
+    },
+    {
+      id: 'shuttle', label: 'Shuttle', state: live.shuttle ? 'On' : lotFullNow ? 'Lot full' : 'Off', on: !!live.shuttle, alert: lotFullNow,
+      row: (
+        <div className={`live-row${lotFullNow ? ' alert' : ''}`}>
+          <span>Overflow shuttle<small className="block">{live.shuttle ? 'Running for the rest of the day' : live.acc.parkingAway > 0 ? `Lot full: ${Math.round(live.acc.parkingAway).toLocaleString()} turned away so far` : `Lot ${Math.round(inp.amenity?.parkingCapGuests ?? 0).toLocaleString()} guests/day · $${LIVE.shuttleDayUsd.toLocaleString()} a day + $${LIVE.shuttlePerGuestUsd}/guest`}</small></span>
+          <button className={live.shuttle ? 'btn primary' : 'btn'} disabled={done || live.tick >= dayEnd(live) || !!live.shuttle} onClick={() => edit((l) => setLiveShuttle(l, true))}>
+            {live.shuttle ? 'On' : 'Call'}
+          </button>
+        </div>
+      ),
+    },
+    {
+      id: 'late', label: 'To 5 pm', state: live.late ? 'On' : 'Off', on: !!live.late,
+      row: (
+        <div className="live-row">
+          <span>Open to 5 pm<small className="block">{live.late ? `Extra hour, crew on overtime · twilight ticket ${money(Math.round(live.priceUsd * LIVE.lateTicketMult))}` : 'Lifts close at 4 pm'}</small></span>
+          <button className={live.late ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveLate(l, !l.late))}>
+            {live.late ? 'On' : 'Off'}
+          </button>
+        </div>
+      ),
+    },
+  ]
+  const forecastView = (
+            <div className="forecast">
+              {fc.map((f) => (
+                <div key={f.day} className="fc-day">
+                  <b>{f.lead === 0 ? 'Today' : `${WEEKDAYS[f.weekday]} ${MONTHS[Number(f.date.slice(5, 7)) - 1]} ${Number(f.date.slice(8))}`}</b>
+                  <span className={`pill ${f.kind === 'holiday' ? 'good' : f.kind === 'weekend' ? 'mid' : ''}`}>{f.kind}</span>
+                  <span>{f.beforeOpening ? 'Not open yet' : f.outlook}</span>
+                  <span>{f.snowHighIn > 0 ? `${f.snowLowIn === f.snowHighIn ? f.snowHighIn : `${f.snowLowIn}–${f.snowHighIn}`}″ snow` : 'No snow'}{f.warmChance >= 0.3 ? ` · ${Math.round(f.warmChance * 100)}% warm` : ''}</span>
+                </div>
+              ))}
+              <p className="hint small">Ranges widen the further ahead it looks. Plan prices, a snowmaking push or overtime on the calendar.</p>
+              <button className="btn" onClick={onCalendar}>Open the calendar</button>
+            </div>
+  )
+  /** Toolbar layout: the open control (or forecast / season) in a sheet over the bottom of the map. */
+  const sheetBody = CTL_VARIANT !== 'z' || !openOpt || !live ? null
+    : openOpt === 'lifts' ? <>{liftChips}<p className="hint small">Tap a lift to run it slowly; press and hold to close it.</p></>
+    : openOpt === 'forecast' ? forecastView
+    : openOpt === 'season' ? <div className="live-season"><SeasonSummary game={game} /></div>
+    : options.find((o) => o.id === openOpt)?.row ?? null
+
   return (
     <MapView
       terrainId={site.terrainId!}
@@ -282,128 +372,78 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         if (l && l.prep.open) {
           const r = l.rows.at(-1)
           drawSkiers(ctx, scale, t, routes, { onHill: r?.onHill ?? 0, queueMin: r?.queueMin ?? 0, factors, time: performance.now() / 1000 })
-          // Option B: the numbers sit on the map, on the things they describe.
-          if (HUD_VARIANT === 'b' && r) {
-            const S = RENDER_SCALE
-            const k = S / t.cellM
-            const placed: number[][] = []
-            if (sc.village && r.lotPct !== undefined) {
-              const [lx, ly] = [(sc.village.lot[0] + 0.5) * S, (sc.village.lot[1] + 0.5) * S]
-              placed.push(drawBadge(ctx, scale, lx, ly - 24 * k, 'Parking', r.lotPct >= 1 ? 'FULL' : pctText(r.lotPct), toneOf(r.lotPct), r.lotPct))
-            }
-            if (game.lifts.length && r.liftPct !== undefined) {
-              const bx = game.lifts.reduce((s, l) => s + l.bottom[0], 0) / game.lifts.length
-              const by = Math.min(...game.lifts.map((l) => l.bottom[1]))
-              drawBadge(ctx, scale, (bx + 0.5) * S, (by + 0.5) * S - 10 * k, 'Lifts', `${r.liftPct >= 1 ? 'FULL' : pctText(r.liftPct)} · ${r.queueMin} min line`, toneOf(r.liftPct), r.liftPct, placed)
-            }
-          }
         }
       }}
       panel={
-        <section className="map-panel live-panel">
-          <div className="seg" role="tablist">
-            {(['controls', 'forecast', 'season'] as const).map((k) => (
-              <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-                {k === 'controls' ? 'Controls' : k === 'forecast' ? 'Forecast' : 'Season'}
-              </button>
-            ))}
-          </div>
-          {tab === 'controls' && live && (
+        <section className={`map-panel live-panel${CTL_VARIANT !== 'now' ? ` compact ctl-${CTL_VARIANT}` : ''}`}>
+          {CTL_VARIANT !== 'z' && (
+            <div className="seg" role="tablist">
+              {(['controls', 'forecast', 'season'] as const).map((k) => (
+                <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+                  {k === 'controls' ? 'Controls' : k === 'forecast' ? 'Forecast' : 'Season'}
+                </button>
+              ))}
+            </div>
+          )}
+          {live && CTL_VARIANT === 'now' && tab === 'controls' && (
             <div className="live-controls">
-              <div className="live-row">
-                <span>Day ticket<small className="block">Now {money(price)} · calendar {money(calendarPrice)}</small></span>
-                <button className="btn" aria-label="Lower price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd - PRICING.stepUsd))}>−</button>
-                <b>${price}</b>
-                <button className="btn" aria-label="Raise price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd + PRICING.stepUsd))}>+</button>
-              </div>
+              {priceRow}
               <p className="hint small">Applies to guests arriving from now. Season-pass holders are not affected.</p>
-              <div className="chips">
-                {game.lifts.map((l, i) => {
-                  const st = liftState(i)
-                  return (
-                    <LiftChip
-                      key={l.id} disabled={st.down || done || !live.prep.open}
-                      className={`chip lift-${st.label.toLowerCase()}${st.label === 'Open' ? '' : ' on'}`}
-                      onTap={() => edit((x) => setLiftMode(x, i, tapMode(x.lifts[i])))}
-                      onHold={() => edit((x) => setLiftMode(x, i, holdMode(x.lifts[i])))}
-                    >
-                      {l.name} · {st.label}
-                    </LiftChip>
-                  )
-                })}
-              </div>
+              {liftChips}
               <p className="hint small">Tap a lift to run it slowly (half capacity, cheaper) or back to full speed. Press and hold to close it (hold again to reopen).</p>
-              {lights && (
-                <div className="live-row">
-                  <span>Night session<small className="block">{live.night ? `5:00–9:00 pm · night ticket ${money(live.nightPriceUsd)}` : 'Off'}</small></span>
-                  <button className={live.night ? 'btn primary' : 'btn'} disabled={live.tick > dayEnd(live)} onClick={() => edit((l) => setLiveNight(l, !l.night))}>
-                    {live.night ? 'On' : 'Off'}
+              {options.map((o) => <div key={o.id}>{o.row}</div>)}
+              {promoNote}
+            </div>
+          )}
+          {live && CTL_VARIANT === 'x' && tab === 'controls' && (
+            <div className="live-controls">
+              {priceRow}
+              {liftChips}
+              <div className="opt-tiles">
+                {options.map((o) => (
+                  <button key={o.id} className={`opt-tile${o.on ? ' on' : ''}${o.alert ? ' alert' : ''}${openOpt === o.id ? ' open' : ''}`} onClick={() => setOpenOpt(openOpt === o.id ? null : o.id)}>
+                    <small>{o.label}</small><b>{o.state}</b>
                   </button>
-                  {live.night && live.tick <= dayEnd(live) && (
-                    <>
-                      <button className="btn" aria-label="Lower night price" onClick={() => edit((l) => setLiveNightPrice(l, l.nightPriceUsd - PRICING.stepUsd))}>−</button>
-                      <button className="btn" aria-label="Raise night price" onClick={() => edit((l) => setLiveNightPrice(l, l.nightPriceUsd + PRICING.stepUsd))}>+</button>
-                    </>
-                  )}
-                </div>
-              )}
-              <div className="live-row">
-                <span>Overtime crew<small className="block">{live.ops.overtime ? '+15% lift capacity, +25% payroll for the rest of the day' : 'Off'}</small></span>
-                <button className={live.ops.overtime ? 'btn primary' : 'btn'} disabled={done || live.tick >= dayEnd(live) || !!live.ops.overtime} onClick={() => edit((l) => setLiveOvertime(l, true))}>
-                  {live.ops.overtime ? 'On' : 'Call in'}
-                </button>
+                ))}
               </div>
-              <div className="live-row">
-                <span>Half-day ticket<small className="block">{live.halfDayUsd ? `From noon · ${money(live.halfDayUsd)}` : 'Not sold today'}</small></span>
-                <button className={live.halfDayUsd ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveHalfDay(l, l.halfDayUsd ? null : defaultHalfDayUsd(l.priceUsd)))}>
-                  {live.halfDayUsd ? 'On' : 'Off'}
-                </button>
-                {!!live.halfDayUsd && !done && live.tick < LIVE.dayTicks && (
-                  <>
-                    <button className="btn" aria-label="Lower half-day price" onClick={() => edit((l) => setLiveHalfDay(l, (l.halfDayUsd ?? 0) - PRICING.stepUsd))}>−</button>
-                    <button className="btn" aria-label="Raise half-day price" onClick={() => edit((l) => setLiveHalfDay(l, (l.halfDayUsd ?? 0) + PRICING.stepUsd))}>+</button>
-                  </>
-                )}
+              {openOpt && options.find((o) => o.id === openOpt)?.row}
+              {promoNote}
+            </div>
+          )}
+          {live && CTL_VARIANT === 'y' && tab === 'controls' && (
+            <div className="live-controls">
+              {priceRow}
+              {liftChips}
+              <button className="more-btn" onClick={() => setMore((m) => !m)}>
+                <span>More options{options.some((o) => o.on) ? <b> · {options.filter((o) => o.on).map((o) => o.label).join(', ')}</b> : null}{options.some((o) => o.alert) ? <b className="alert-dot"> · lot full</b> : null}</span>
+                <span>{more ? '▴' : '▾'}</span>
+              </button>
+              {more && options.map((o) => <div key={o.id}>{o.row}</div>)}
+              {promoNote}
+            </div>
+          )}
+          {live && CTL_VARIANT === 'z' && (
+            <div className="opt-strip">
+              <div className="strip-price">
+                <button aria-label="Lower price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd - PRICING.stepUsd))}>−</button>
+                <b>${price}</b>
+                <button aria-label="Raise price" disabled={done} onClick={() => edit((l) => setLivePrice(l, l.priceUsd + PRICING.stepUsd))}>+</button>
               </div>
-              <div className="live-row">
-                <span>Après special<small className="block">{live.apresResult
-                  ? `Seated ${live.apresResult.served} of ${live.apresResult.wanted} · ${money(live.apresResult.revenueUsd - live.apresResult.costUsd)}`
-                  : live.apres ? `Booked for 3 pm · ${inp.amenity?.lodgeSeats ?? '—'} seats` : `3 pm at the lodge · ${inp.amenity?.lodgeSeats ?? '—'} seats`}</small></span>
-                <button className={live.apres ? 'btn primary' : 'btn'} disabled={done || live.tick > LIVE.apresFromTick || !!live.apresResult} onClick={() => edit((l) => setLiveApres(l, !l.apres))}>
-                  {live.apres ? 'On' : 'Off'}
+              <button className={`chip${openOpt === 'lifts' ? ' sel' : ''}${game.lifts.some((_, i) => liftState(i).label !== 'Open') ? ' on' : ''}`} onClick={() => setOpenOpt(openOpt === 'lifts' ? null : 'lifts')}>
+                Lifts {game.lifts.filter((_, i) => liftState(i).label === 'Open').length}/{game.lifts.length}
+              </button>
+              {options.map((o) => (
+                <button key={o.id} className={`chip${o.on ? ' on' : ''}${o.alert ? ' alert' : ''}${openOpt === o.id ? ' sel' : ''}`} onClick={() => setOpenOpt(openOpt === o.id ? null : o.id)}>
+                  {o.label}{o.on || o.alert ? ` · ${o.state}` : ''}
                 </button>
-              </div>
-              <div className={`live-row${!live.shuttle && (row?.turnedAway ?? 0) > 0 && live.acc.parkingAway > 0 ? ' alert' : ''}`}>
-                <span>Overflow shuttle<small className="block">{live.shuttle ? 'Running for the rest of the day' : live.acc.parkingAway > 0 ? `Lot full: ${Math.round(live.acc.parkingAway).toLocaleString()} turned away so far` : `Lot ${Math.round(inp.amenity?.parkingCapGuests ?? 0).toLocaleString()} guests/day · $${LIVE.shuttleDayUsd.toLocaleString()} a day + $${LIVE.shuttlePerGuestUsd}/guest`}</small></span>
-                <button className={live.shuttle ? 'btn primary' : 'btn'} disabled={done || live.tick >= dayEnd(live) || !!live.shuttle} onClick={() => edit((l) => setLiveShuttle(l, true))}>
-                  {live.shuttle ? 'On' : 'Call'}
-                </button>
-              </div>
-              <div className="live-row">
-                <span>Open to 5 pm<small className="block">{live.late ? `Extra hour, crew on overtime · twilight ticket ${money(Math.round(live.priceUsd * LIVE.lateTicketMult))}` : 'Lifts close at 4 pm'}</small></span>
-                <button className={live.late ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveLate(l, !l.late))}>
-                  {live.late ? 'On' : 'Off'}
-                </button>
-              </div>
-              {live.promo.dayDemandMult > 1 || live.promo.visitorMult > 1 ? <p className="hint small">A marketing campaign is running today.</p> : null}
+              ))}
+              <button className={`chip ghost${openOpt === 'forecast' ? ' sel' : ''}`} onClick={() => setOpenOpt(openOpt === 'forecast' ? null : 'forecast')}>Forecast</button>
+              <button className={`chip ghost${openOpt === 'season' ? ' sel' : ''}`} onClick={() => setOpenOpt(openOpt === 'season' ? null : 'season')}>Season</button>
             </div>
           )}
           {tab === 'controls' && !live && <p className="hint">Next day starts shortly. {last && <b>Yesterday: {money(last.netUsd)}.</b>}</p>}
-          {tab === 'forecast' && (
-            <div className="forecast">
-              {fc.map((f) => (
-                <div key={f.day} className="fc-day">
-                  <b>{f.lead === 0 ? 'Today' : `${WEEKDAYS[f.weekday]} ${MONTHS[Number(f.date.slice(5, 7)) - 1]} ${Number(f.date.slice(8))}`}</b>
-                  <span className={`pill ${f.kind === 'holiday' ? 'good' : f.kind === 'weekend' ? 'mid' : ''}`}>{f.kind}</span>
-                  <span>{f.beforeOpening ? 'Not open yet' : f.outlook}</span>
-                  <span>{f.snowHighIn > 0 ? `${f.snowLowIn === f.snowHighIn ? f.snowHighIn : `${f.snowLowIn}–${f.snowHighIn}`}″ snow` : 'No snow'}{f.warmChance >= 0.3 ? ` · ${Math.round(f.warmChance * 100)}% warm` : ''}</span>
-                </div>
-              ))}
-              <p className="hint small">Ranges widen the further ahead it looks. Plan prices, a snowmaking push or overtime on the calendar.</p>
-              <button className="btn" onClick={onCalendar}>Open the calendar</button>
-            </div>
-          )}
-          {tab === 'season' && <div className="live-season"><SeasonSummary game={game} /></div>}
+          {CTL_VARIANT !== 'z' && tab === 'forecast' && forecastView}
+          {CTL_VARIANT !== 'z' && tab === 'season' && <div className="live-season"><SeasonSummary game={game} /></div>}
         </section>
       }
       actions={
@@ -414,91 +454,33 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         </div>
       }
     >
-      {HUD_VARIANT === 'a' && (
-        <div className="hud hud-a">
-          <div className="hud-line">
-            <b>{live ? dateLabel(live.prep.date) : ''}</b>
-            <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? 'Not open yet' : '—'}</span>
-            {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}<small>today</small></b>}
-            <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
-          </div>
-          {row && live?.prep.open && (
-            <div className="gauges">
-              {row.lotPct !== undefined && <Gauge label="Parking" pct={row.lotPct} />}
-              {row.liftPct !== undefined && <Gauge label="Lifts" pct={row.liftPct} />}
-              <div className="gauge num"><small>Line</small><b>{row.queueMin} min</b></div>
-              <div className="gauge num"><small>On hill</small><b>{row.onHill.toLocaleString()}</b><small className="gauge-note">{Math.round(live.acc.guests).toLocaleString()} today</small></div>
-            </div>
-          )}
-          {live && <p className="hud-sub">❄ {live.prep.baseIn}″ base{live.prep.newSnowIn > 0 ? ` · +${live.prep.newSnowIn}″ new` : ''}{live.prep.open ? ` · conditions ${Math.round(live.prep.conditions * 100)}%` : ''}</p>}
-        </div>
-      )}
-      {HUD_VARIANT === 'b' && (
-        <>
-          <div className="hud hud-b">
-            <div className="hud-line">
-              <b>{live ? dateLabel(live.prep.date) : ''}</b>
-              <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? 'Not open yet' : '—'}</span>
-              {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}<small>today</small></b>}
-              <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
-            </div>
-          </div>
-          {row && live && (
-            <div className="hud-foot">
-              <span><b>{row.onHill.toLocaleString()}</b> on the hill</span>
-              <span><b>{Math.round(live.acc.guests).toLocaleString()}</b> today</span>
-              <span>❄ <b>{live.prep.baseIn}″</b>{live.prep.newSnowIn > 0 ? ` +${live.prep.newSnowIn}″` : ''}</span>
-              <span><b>{Math.round(live.prep.conditions * 100)}%</b> cond.</span>
-            </div>
-          )}
-        </>
-      )}
-      {HUD_VARIANT === 'c' && (
-        <>
-          <div className="hud-bar">
-            <b>{live ? dateLabel(live.prep.date) : ''}</b>
-            <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? 'Not open yet' : '—'}</span>
-            {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}</b>}
-            <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
-          </div>
-          {row && live?.prep.open && (
-            <div className="hud-rail">
-              {row.lotPct !== undefined && <Ring label="Parking" pct={row.lotPct} />}
-              {row.liftPct !== undefined && <Ring label="Lifts" pct={row.liftPct} />}
-              <Ring label="Line" pct={Math.min(1, row.queueMin / 20)} text={`${row.queueMin}m`} />
-              <div className="rail-num"><b>{row.onHill.toLocaleString()}</b><small>on hill</small></div>
-              <div className="rail-num"><b>{live.prep.baseIn}″</b><small>{Math.round(live.prep.conditions * 100)}% cond.</small></div>
-            </div>
-          )}
-        </>
-      )}
-      <div className="hud" hidden={HUD_VARIANT !== 'now'}>
-        <div className="hud-row">
-          <b>{live ? dateLabel(live.prep.date) : season ? dateLabel(seasonDate(game.year, season.day).toISOString().slice(0, 10)) : ''}</b>
-          <span>
-            {live && live.prep.open ? (done ? 'Closed for the day' : clock(live.tick, !!live.late)) : live ? (live.prep.stormClosed ? 'Closed: storm hold' : 'Not open yet') : '—'}
-          </span>
-          <button className="hud-menu" aria-label="Back to the resort" onClick={onExit}>⌂</button>
-        </div>
-        <div className="hud-chips">
-          {live && live.prep.open && <span>Skiers {Math.round(live.acc.guests).toLocaleString()}</span>}
-          {row && <span>On hill {row.onHill.toLocaleString()}</span>}
-          {row && row.lotPct !== undefined && (
-            <span className={row.lotPct >= 1 ? 'lot-full' : row.lotPct >= 0.9 ? 'lot-near' : ''} title="Parking lot: demand against the room in the lot (incl. shuttle)">
-              Lot {Math.round(row.lotPct * 100)}%{row.lotPct >= 1 ? ' FULL' : ''}
-            </span>
-          )}
-          {row && row.liftPct !== undefined && (
-            <span className={row.liftPct >= 1 ? 'lot-full' : row.liftPct >= 0.9 ? 'lot-near' : ''} title="Lifts: demand against what the running lifts can carry">
-              Lifts {Math.round(row.liftPct * 100)}%{row.liftPct >= 1 ? ' FULL' : ''}
-            </span>
-          )}
-          {row && <span>Line {row.queueMin} min</span>}
-          {live && live.prep.open && <span className={liveNet(live) < 0 ? 'neg' : ''}>Today {money(liveNet(live))}</span>}
-          {live && <span>Snow {live.prep.baseIn}″{live.prep.newSnowIn > 0 ? ` · +${live.prep.newSnowIn}″` : ''}</span>}
-          {live && live.prep.open && <span>Conditions {Math.round(live.prep.conditions * 100)}%</span>}
-        </div>
+      <div className="hud-bar">
+        <b>{live ? dateLabel(live.prep.date) : season ? dateLabel(seasonDate(game.year, season.day).toISOString().slice(0, 10)) : ''}</b>
+        <span>{live && live.prep.open ? (done ? 'Closed' : clock(live.tick, !!live.late)) : live ? (live.prep.stormClosed ? 'Storm hold' : 'Not open yet') : '—'}</span>
+        {live && live.prep.open && <b className={`hud-today${liveNet(live) < 0 ? ' neg' : ''}`}>{money(liveNet(live))}</b>}
+        <button className="hud-home" aria-label="Back to the resort" onClick={onExit}>⌂</button>
       </div>
+      {row && live?.prep.open && (
+        <div className="hud-rail">
+          {row.lotPct !== undefined && <Ring label="Parking" pct={row.lotPct} />}
+          {row.liftPct !== undefined && <Ring label="Lifts" pct={row.liftPct} />}
+          <Ring label="Line" pct={Math.min(1, row.queueMin / 20)} text={`${row.queueMin}m`} />
+          <div className="rail-num"><b>{row.onHill.toLocaleString()}</b><small>on hill</small></div>
+          <div className="rail-num"><b>{Math.round(live.acc.guests).toLocaleString()}</b><small>today</small></div>
+        </div>
+      )}
+      {live && (
+        <div className="hud-foot">
+          <span>❄ <b>{live.prep.baseIn}″</b> base{live.prep.newSnowIn > 0 ? <> · <b>+{live.prep.newSnowIn}″</b> new</> : null}</span>
+          {live.prep.open && <span><b>{Math.round(live.prep.conditions * 100)}%</b> conditions</span>}
+        </div>
+      )}
+      {sheetBody && (
+        <div className="ctl-sheet">
+          <button className="bcard-x" aria-label="Close" onClick={() => setOpenOpt(null)}>×</button>
+          {sheetBody}
+        </div>
+      )}
       {!ready && <p className="note map-loading">Drawing your resort…</p>}
       {skipMenu && (
         <div className="hud-sheet skip-sheet">
