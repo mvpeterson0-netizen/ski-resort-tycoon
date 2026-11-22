@@ -3,7 +3,7 @@
  * react to what happens, and fast-forward when you like. Playback speed is screen time
  * only; skipping stops at any event card that needs an answer.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   LIVE, answerLiveCard, finishDay, forecast, liveDayDone, playTick, seasonDate, seasonInputs, setLiftMode, setLiveNight, setLiveNightPrice,
   setLivePrice, siteById, startDay, tickTime, priceForDay, PRICING,
@@ -145,7 +145,9 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
     if (live.prep.carryDown[i] || live.tick < live.fx.liftUntil[i]) return { label: 'Down', down: true }
     return { label: live.lifts[i] === 'open' ? 'Open' : live.lifts[i] === 'slow' ? 'Slow' : 'Closed', down: false }
   }
-  const cycle = (m: LiftMode): LiftMode => (m === 'open' ? 'slow' : m === 'slow' ? 'closed' : 'open')
+  // Tap: open ⇄ slow (a closed lift reopens). Long press: close (or reopen if already closed).
+  const tapMode = (m: LiftMode): LiftMode => (m === 'open' ? 'slow' : 'open')
+  const holdMode = (m: LiftMode): LiftMode => (m === 'closed' ? 'open' : 'closed')
 
   return (
     <MapView
@@ -216,17 +218,18 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
                 {game.lifts.map((l, i) => {
                   const st = liftState(i)
                   return (
-                    <button
+                    <LiftChip
                       key={l.id} disabled={st.down || done || !live.prep.open}
                       className={`chip lift-${st.label.toLowerCase()}${st.label === 'Open' ? '' : ' on'}`}
-                      onClick={() => edit((x) => setLiftMode(x, i, cycle(x.lifts[i])))}
+                      onTap={() => edit((x) => setLiftMode(x, i, tapMode(x.lifts[i])))}
+                      onHold={() => edit((x) => setLiftMode(x, i, holdMode(x.lifts[i])))}
                     >
                       {l.name} · {st.label}
-                    </button>
+                    </LiftChip>
                   )
                 })}
               </div>
-              <p className="hint small">Tap a lift to run it slowly (half capacity, cheaper) or close it.</p>
+              <p className="hint small">Tap a lift to run it slowly (half capacity, cheaper) or back to full speed. Press and hold to close it (hold again to reopen).</p>
               {lights && (
                 <div className="live-row">
                   <span>Night session<small className="block">{live.night ? `5:00–9:00 pm · night ticket ${money(live.nightPriceUsd)}` : 'Off'}</small></span>
@@ -331,5 +334,50 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
       {done && !pending && live && live.rows.length > 0 && <p className="hint center day-end">Day over: {money(liveNet(live))}</p>}
       <span className="sr-only">{usd(game.cashUsd)}</span>
     </MapView>
+  )
+}
+
+const HOLD_MS = 500
+
+/** Button that tells a tap from a long press (touch, mouse or pen). */
+function LiftChip({ onTap, onHold, disabled, className, children }: {
+  onTap: () => void; onHold: () => void; disabled: boolean; className: string; children: ReactNode
+}) {
+  const timer = useRef<number | null>(null)
+  const held = useRef(false)
+  const [holding, setHolding] = useState(false)
+  const cancel = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current)
+    timer.current = null
+    setHolding(false)
+  }
+  useEffect(() => cancel, [])
+  return (
+    <button
+      type="button" disabled={disabled}
+      className={`${className} lift-chip${holding ? ' holding' : ''}`}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return
+        held.current = false
+        setHolding(true)
+        timer.current = window.setTimeout(() => {
+          timer.current = null
+          held.current = true
+          setHolding(false)
+          navigator.vibrate?.(30)
+          onHold()
+        }, HOLD_MS)
+      }}
+      onPointerUp={cancel}
+      onPointerLeave={cancel}
+      onPointerCancel={cancel}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => {
+        if (held.current) { held.current = false; return }
+        onTap()
+      }}
+    >
+      {children}
+    </button>
   )
 }
