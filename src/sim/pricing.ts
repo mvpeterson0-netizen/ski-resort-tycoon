@@ -35,11 +35,13 @@ export interface PriceCalendar {
   weekend: number | null
   holiday: number | null
   night: number
+  /** Half-day ticket price from noon, every day (null = not sold). Absent on older saves = null. */
+  halfDay?: number | null
   /** Per season-day plans for the current or coming season (cleared when a season ends). */
   ops: Record<number, DayOps>
 }
 
-export const newCalendar = (): PriceCalendar => ({ weekend: null, holiday: null, night: PRICING.nightPriceUsd, ops: {} })
+export const newCalendar = (): PriceCalendar => ({ weekend: null, holiday: null, night: PRICING.nightPriceUsd, halfDay: null, ops: {} })
 
 export type DayKind = 'weekday' | 'weekend' | 'holiday'
 
@@ -83,3 +85,7 @@ export function setDayOps(cal: PriceCalendar, day: number, patch: Partial<DayOps
 export function setKindPrice(cal: PriceCalendar, kind: 'weekend' | 'holiday' | 'night', priceUsd: number | null): PriceCalendar {
   return { ...cal, [kind]: priceUsd === null ? null : clampPrice(priceUsd) }
 }
+
+/** Sell a half-day ticket from noon at this price every day (null stops it). */
+export const setHalfDayPrice = (cal: PriceCalendar, priceUsd: number | null): PriceCalendar =>
+  ({ ...cal, halfDay: priceUsd === null ? null : clampPrice(priceUsd) })

@@ -11,7 +11,7 @@
  */
 import { NEUTRAL_EFFECTS } from './amenities'
 import {
-  answerCard, finishLiveDay, isDayDone, setLiftMode, setLiveLate, setLiveNight, setLiveOvertime, setLiveNightPrice, setLivePrice, startLiveDay, tickLiveDay,
+  answerCard, defaultHalfDayUsd, finishLiveDay, isDayDone, setLiftMode, setLiveApres, setLiveHalfDay, setLiveLate, setLiveNight, setLiveOvertime, setLiveShuttle, setLiveNightPrice, setLivePrice, startLiveDay, tickLiveDay,
   type LiveAction, type LiveContext, type LiveDay,
 } from './liveDay'
 import { PROMOS, costOf, promoEffects, promoEnd, type PromoKind } from './promos'
@@ -90,6 +90,12 @@ interface Override {
   overtime?: boolean
   /** Extended hours (to 5 pm) on from the start, or off all day. */
   late?: boolean
+  /** Half-day price all day (null = not sold), ignoring live changes. */
+  halfDay?: number | null
+  /** Apres special on from the start, or never. */
+  apres?: boolean
+  /** Overflow shuttle on from the start, or never. */
+  shuttle?: boolean
   snowPush?: boolean
   /** Choose these options on event cards instead of the player's. */
   cards?: Record<string, string>
@@ -104,8 +110,13 @@ export function replayDay(s: SeasonState, inp: SeasonInputs, base: LiveContext, 
     ...(o.overtime !== undefined ? { overtime: o.overtime } : {}),
     ...(o.snowPush !== undefined ? { snowPush: o.snowPush } : {}),
   }
-  let l = startLiveDay(s, inp, { ...base, priceUsd: o.price ?? base.priceUsd, promo, ops })
+  let l = startLiveDay(s, inp, {
+    ...base, priceUsd: o.price ?? base.priceUsd, promo, ops,
+    ...(o.halfDay !== undefined ? { halfDayUsd: o.halfDay } : {}),
+  })
   if (o.late) l = setLiveLate(l, true)
+  if (o.apres) l = setLiveApres(l, true)
+  if (o.shuttle) l = setLiveShuttle(l, true)
   const applied = new Set<LiveAction>()
   for (let guard = 0; guard < 400 && !isDayDone(l, inp); guard++) {
     for (const a of log) {
@@ -117,6 +128,9 @@ export function replayDay(s: SeasonState, inp: SeasonInputs, base: LiveContext, 
       else if (a.kind === 'night' && o.night === undefined) l = setLiveNight(l, a.on)
       else if (a.kind === 'overtime' && o.overtime === undefined) l = setLiveOvertime(l, a.on)
       else if (a.kind === 'late' && o.late === undefined) l = setLiveLate(l, a.on)
+      else if (a.kind === 'halfDay' && o.halfDay === undefined) l = setLiveHalfDay(l, a.value)
+      else if (a.kind === 'apres' && o.apres === undefined) l = setLiveApres(l, a.on)
+      else if (a.kind === 'shuttle' && o.shuttle === undefined) l = setLiveShuttle(l, a.on)
     }
     l = tickLiveDay(l, inp)
     if (l.pending) {
@@ -266,6 +280,52 @@ export function computeImpact(s: SeasonState, inp: SeasonInputs, live: LiveDay, 
     const r = replayDay(s, inp, base, log, { late: true }).result
     const d = r.netUsd - net
     if (d > IMPACT.minItemUsd) items.push({ id: 'late', label: 'Open to 5 pm (not used)', netUsd: -d, missed: true, detail: `Staying open an extra hour would have brought about ${Math.round(r.guests - actual.guests)} more skiers and ${k(d)} net.` })
+  }
+
+  // ---- half-day ticket from noon ----
+  if (actual.halfDayUsd) {
+    const r = replayDay(s, inp, base, log, { halfDay: null }).result
+    const d = net - r.netUsd
+    items.push({
+      id: 'halfDay', label: 'Half-day ticket', netUsd: d,
+      detail: `${d >= 0 ? 'Paid off' : 'Cost you'} ${k(d)}: ${Math.round(actual.dayTicketGuests - r.dayTicketGuests)} more afternoon skiers, but everyone arriving after noon paid the half-day price instead of the full one.`,
+    })
+  } else {
+    const price = defaultHalfDayUsd(base.priceUsd)
+    const r = replayDay(s, inp, base, log, { halfDay: price }).result
+    const d = r.netUsd - net
+    if (d > IMPACT.minItemUsd) items.push({ id: 'halfDay', label: 'Half-day ticket (not sold)', netUsd: -d, missed: true, detail: `A $${price} half-day ticket from noon would have brought about ${Math.round(r.dayTicketGuests - actual.dayTicketGuests)} more skiers and ${k(d)} net.` })
+  }
+
+  // ---- apres special ----
+  if (live.apres || live.apresResult) {
+    const r = replayDay(s, inp, base, log, { apres: false }).result
+    const d = net - r.netUsd
+    const a = live.apresResult
+    items.push({
+      id: 'apres', label: 'Après special', netUsd: d,
+      detail: a
+        ? `${a.served} of ${a.wanted} guests who wanted in got a seat: ${k(a.revenueUsd)} in sales for ${k(a.costUsd)} of setup and supplies.${a.reputationDelta < 0 ? ' The lodge overflowed, which guests noticed.' : ''}`
+        : `It did not run. Net ${signedK(d)}.`,
+    })
+  } else {
+    const r = replayDay(s, inp, base, log, { apres: true }).result
+    const d = r.netUsd - net
+    if (d > IMPACT.minItemUsd) items.push({ id: 'apres', label: 'Après special (not run)', netUsd: -d, missed: true, detail: `A 3 pm special at the lodge would have added about ${k(d)} net.` })
+  }
+
+  // ---- overflow parking shuttle ----
+  if (live.shuttle) {
+    const r = replayDay(s, inp, base, log, { shuttle: false }).result
+    const d = net - r.netUsd
+    items.push({
+      id: 'shuttle', label: 'Overflow shuttle', netUsd: d,
+      detail: `Carried about ${Math.max(0, Math.round(actual.guests - r.guests))} extra skiers in from the overflow lot, for ${k(actual.costUsd - r.costUsd)} in buses and guest costs. Net ${signedK(d)}.`,
+    })
+  } else if (actual.parkingTurnedAway >= 20) {
+    const r = replayDay(s, inp, base, log, { shuttle: true }).result
+    const d = r.netUsd - net
+    if (d > IMPACT.minItemUsd) items.push({ id: 'shuttle', label: 'Overflow shuttle (not used)', netUsd: -d, missed: true, detail: `${actual.parkingTurnedAway} skiers found the lot full. A shuttle from the overflow lot would have added about ${k(d)} net.` })
   }
 
   // ---- snowmaking push ----

@@ -175,13 +175,17 @@ export interface DayResult {
   eventIncomeUsd: number
   /** Lifts ran to 5 pm (extended hours); hourly then has two extra day ticks before any night ones. */
   late?: boolean
+  /** Après special result, shuttle run, half-day price sold (when used). */
+  apres?: import('./liveDay').ApresResult
+  shuttle?: boolean
+  halfDayUsd?: number
   /** Night session (included in guests and revenue above). */
   nightGuests?: number
   nightRevenueUsd?: number
   /** Campaign costs paid today (included in costUsd). */
   marketingUsd?: number
   /** Where the running costs went (the rest of costUsd is campaigns, repairs and settlements). */
-  costParts?: { payroll: number; lifts: number; overhead: number; snowmaking: number; guests: number; lights: number }
+  costParts?: { payroll: number; lifts: number; overhead: number; snowmaking: number; guests: number; lights: number; services?: number }
   /** Most guests on the hill at once. */
   peakOnHill?: number
   /** Guests arriving in each half hour (9:00 on; night ticks follow). */

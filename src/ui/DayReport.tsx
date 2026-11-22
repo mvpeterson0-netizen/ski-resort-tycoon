@@ -107,7 +107,7 @@ function Decisions({ impact, game }: { impact: DayImpact; game: GameState }) {
 function DayDetail({ d, vsAvg, game }: { d: DayResult; vsAvg: number | null; game: GameState }) {
   const cp = d.costParts
   const revenue = d.ticketRevenueUsd + d.foodRevenueUsd + d.extrasRevenueUsd + d.eventIncomeUsd
-  const running = cp ? cp.payroll + cp.lifts + cp.overhead + cp.snowmaking + cp.guests + cp.lights : 0
+  const running = cp ? cp.payroll + cp.lifts + cp.overhead + cp.snowmaking + cp.guests + cp.lights + (cp.services ?? 0) : 0
   const other = d.costUsd - running - (d.marketingUsd ?? 0) - d.eventCostUsd
   const avgPrice = d.dayTicketGuests > 0 ? d.ticketRevenueUsd / d.dayTicketGuests : d.ticketPriceUsd
   return (
@@ -152,6 +152,7 @@ function DayDetail({ d, vsAvg, game }: { d: DayResult; vsAvg: number | null; gam
                 <R l="Guest costs" v={money(cp.guests)} />
                 {cp.snowmaking > 0 && <R l="Snowmaking" v={money(cp.snowmaking)} />}
                 {cp.lights > 0 && <R l="Night lights" v={money(cp.lights)} />}
+                {(cp.services ?? 0) > 0 && <R l="Après, shuttle" v={money(cp.services!)} />}
               </>
             ) : <R l="Operating" v={money(d.costUsd - (d.marketingUsd ?? 0) - d.eventCostUsd)} />}
             {(d.marketingUsd ?? 0) > 0 && <R l="Marketing" v={money(d.marketingUsd!)} />}

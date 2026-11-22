@@ -20,7 +20,7 @@ import { PROMOS, bookPromo, luckMultFor, promoCostUsd, promoEffects, type Promo,
 import { createRng } from './rng'
 import { computeImpact } from './impact'
 import {
-  answerAfternoon, answerCard, finishLiveDay, isDayDone, runAfternoonCheck, runToEnd, startLiveDay, tickLiveDay,
+  answerAfternoon, answerCard, finishLiveDay, isDayDone, runAfternoonCheck, runParkingCheck, runToEnd, startLiveDay, tickLiveDay,
   type AfternoonOption, type LiveContext, type LiveDay,
 } from './liveDay'
 
@@ -368,6 +368,7 @@ export function liveContextFor(g: GameState): LiveContext {
   return {
     priceUsd: priceForDay(g.ticketPriceUsd, g.calendar, g.year, day),
     nightPriceUsd: g.calendar.night,
+    halfDayUsd: g.calendar.halfDay ?? null,
     ops: g.calendar.ops[day] ?? {},
     promo: promoEffects(g.promos, day, date.getUTCDay()),
     promos: g.promos,
@@ -432,7 +433,12 @@ export function checkAfternoon(g: GameState, site: Site): GameState {
   return g.live ? { ...g, live: runAfternoonCheck(g.live, seasonInputs(g, site)) } : g
 }
 
-/** Answer the 2 pm offer. */
+/** When the lot fills: check whether an overflow shuttle should pay (pauses on an offer). */
+export function checkParking(g: GameState, site: Site): GameState {
+  return g.live ? { ...g, live: runParkingCheck(g.live, seasonInputs(g, site)) } : g
+}
+
+/** Answer the 2 pm offer (or the lot-full offer). */
 export function answerAfternoonOffer(g: GameState, choice: AfternoonOption['id'] | 'none'): GameState {
   return g.live ? { ...g, live: answerAfternoon(g.live, choice) } : g
 }

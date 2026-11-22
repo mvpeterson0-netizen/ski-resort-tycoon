@@ -226,6 +226,24 @@ with a reduced off-season (building, hiring, financing, summer activities).
   auto-player's resort: offered on ~18% of open days in year 1, ~35–45% in years 3–10, almost always extended
   hours; overtime alone almost never pays there (busy days are parking-limited, not lift-limited) and the
   auto-player never builds lights. End-of-day feedback covers extended hours (used / missed). All PLACEHOLDER.
+- **In-day actions (owner picked 3 of 8; `liveDay.ts`, all PLACEHOLDER):**
+  - *Half-day ticket:* price in the calendar (`PriceCalendar.halfDay`, null = not sold; default offer 75% of
+    the weekday price) and switchable/priced live. From noon, afternoon day-ticket arrivals buy it: they react
+    to its price against a 75% reference, ×1.5 extra demand (people who would not pay for a full day), food
+    ×0.8, rentals/lessons ×0.6. Measured on the auto-player resort: year 1 pays a little most days (~+$0.3–1.2k,
+    always room on the hill); later it pays on weekdays and loses on average on busy weekends/holidays.
+  - *Après special:* book before 3 pm; at 3 pm 15% of guests on the hill want in, seated up to the lodge's
+    seats (`AMENITY_TUNING.lodgeSeats` 60/150/260/400/560 by lodge level); spend $14 × lodge food mult, supplies
+    45%, setup $150 + $2.50/seat. Overflow (wanted > 1.5× seats) −0.002 reputation, otherwise +0.001.
+    Measured: loses on weekdays, pays a little on weekends/holidays (~+$60 with the warming hut, ~+$500 with a lodge).
+  - *Overflow parking shuttle:* call any time; adds max(250, 35% of the lot) guests of parking for the rest of
+    the day; $1,200 day hire + $3 per extra guest carried. A "lot is full" pop-up (once a day, first half hour
+    the lot turns people away, if it should add ≥ $200) offers it. Pays on ~80–90% of lot-full days.
+  - The 2 pm check also considers après and the shuttle. End-of-day feedback covers all three (used / missed);
+    their costs show as "Après, shuttle" in the report. `inday.test.ts`.
+  - *Parked for later (owner: keep as potential additions):* move staff between lifts/patrol; open terrain after
+    avalanche control on powder days; midday re-grooming; wind holds (run a lift in gusts or close it);
+    snow-report wording (honest vs upbeat, exaggeration hurts reputation).
 - **Event cards:** each event pauses the day with 2 options (e.g. lift breakdown: standard repair or
   2.2× rush crew back in 2 h; outage: wait or generators; lawsuit: settle or fight; race: host or
   decline; new group-booking offers). The default option reproduces the old automatic outcome.

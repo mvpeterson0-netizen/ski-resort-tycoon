@@ -59,6 +59,40 @@ export const LIVE = {
   lateTicketMult: 0.6,
   latePayrollMult: 1.5,
   lateOverheadMult: 0.5,
+  /**
+   * Half-day ticket, sold from noon. Afternoon arrivals buy it instead of a full-day ticket, so
+   * they pay less (and react to its price against a lower reference), and it brings out extra
+   * people who would not pay for a full day. They spend a little less on food and rentals.
+   */
+  halfDayFromTick: 6,
+  halfDayRefShare: 0.75,
+  halfDayNewShare: 0.5,
+  halfDayFoodMult: 0.8,
+  halfDayExtrasMult: 0.6,
+  /**
+   * Après special at the lodge from 3:00 pm: a share of the guests on the hill stop for a drink
+   * and food, up to the lodge's seats. Setup (staff, music) plus supplies; an overflowing lodge
+   * costs a little reputation, a comfortable one earns a little.
+   */
+  apresFromTick: 12,
+  apresTakeRate: 0.15,
+  apresSpendUsd: 14,
+  apresSupplyShare: 0.45,
+  apresSetupUsd: 150,
+  apresSetupPerSeatUsd: 2.5,
+  apresRepGood: 0.001,
+  apresRepCrowded: -0.002,
+  /** Crowded when this many times the seats want in. */
+  apresCrowdedAt: 1.5,
+  /**
+   * Overflow parking shuttle: buses from an overflow lot add parking for the rest of the day.
+   * A day's hire is charged when it is called, plus a cost per extra guest carried.
+   */
+  shuttleMinGuests: 250,
+  shuttleShareOfLot: 0.35,
+  shuttleDayUsd: 1_200,
+  shuttlePerGuestUsd: 3,
+  /** Advice pop-ups suggest an option only if it should add at least this much to today's net. */
   /** The afternoon check (overtime / extended hours / night session advice) comes up at this tick: 2:00 pm. */
   afternoonTick: 10,
   /** Suggest an option only if it should add at least this much to today's net. */
@@ -150,9 +184,13 @@ interface Acc {
   nightRev: number
   /** Where the day's running costs went (absent on a day saved before this was tracked). */
   parts?: CostParts
+  /** The shuttle's day hire has been charged. */
+  shuttleStarted?: boolean
 }
 
 export interface CostParts {
+  /** Après supplies and setup, shuttle hire (absent on days played before these existed). */
+  services?: number
   payroll: number
   lifts: number
   /** Admin, utilities, grooming and base-area running costs. */
@@ -162,7 +200,7 @@ export interface CostParts {
   guests: number
   lights: number
 }
-const NO_PARTS: CostParts = { payroll: 0, lifts: 0, overhead: 0, snowmaking: 0, guests: 0, lights: 0 }
+const NO_PARTS: CostParts = { payroll: 0, lifts: 0, overhead: 0, snowmaking: 0, guests: 0, lights: 0, services: 0 }
 
 export interface LiveFx {
   /** Lift i is closed while tick < liftUntil[i] (a breakdown). */
@@ -183,6 +221,15 @@ export interface LiveDay {
   night: boolean
   /** Extended hours: lifts run to 5:00 pm today (absent on older saved days = no). */
   late?: boolean
+  /** Half-day ticket price from noon (null/absent = not sold). */
+  halfDayUsd?: number | null
+  /** Après special at the lodge from 3 pm, and what it did once it ran. */
+  apres?: boolean
+  apresResult?: ApresResult
+  /** Overflow parking shuttle running (from the tick it was called). */
+  shuttle?: boolean
+  /** The lot-full check (shuttle advice) has been done today. */
+  parkingCheckDone?: boolean
   nightPriceUsd: number
   /** The player's lift settings. */
   lifts: LiftMode[]
@@ -208,11 +255,22 @@ export interface LiveDay {
   afternoonOffer?: AfternoonCheck | null
 }
 
+export interface ApresResult {
+  /** Guests who wanted in, and how many the lodge seated. */
+  wanted: number
+  served: number
+  revenueUsd: number
+  costUsd: number
+  reputationDelta: number
+}
+
 export interface LiveContext {
   ops: DayOps
   promo: PromoEffects
   priceUsd: number
   nightPriceUsd: number
+  /** Half-day ticket price from the calendar (null/absent = not sold). */
+  halfDayUsd?: number | null
   /** All booked campaigns (so a report can ask what one of them did). */
   promos?: Promo[]
   /** Skip rolling events (focused tests). */
@@ -227,6 +285,9 @@ export type LiveAction =
   | { tick: number; kind: 'night'; on: boolean }
   | { tick: number; kind: 'overtime'; on: boolean }
   | { tick: number; kind: 'late'; on: boolean }
+  | { tick: number; kind: 'halfDay'; value: number | null }
+  | { tick: number; kind: 'apres'; on: boolean }
+  | { tick: number; kind: 'shuttle'; on: boolean }
   | { tick: number; kind: 'card'; cardId: string; option: string }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
@@ -321,6 +382,7 @@ export function startLiveDay(s: SeasonState, inp: SeasonInputs, ctx: LiveContext
   }
   return {
     prep, tick: 0, priceUsd: ctx.priceUsd, night: !!ctx.ops.night, nightPriceUsd: ctx.nightPriceUsd,
+    ...(ctx.halfDayUsd ? { halfDayUsd: ctx.halfDayUsd } : {}),
     lifts: inp.lifts.map(() => 'open' as LiftMode), promo: ctx.promo, ops: ctx.ops,
     fx: { liftUntil: inp.lifts.map(() => 0), outageMult: 1, outageUntil: 0, groomerPenalty: 0, dayDemandMult: 1, groupPerTick: 0, groupUntil: 0, groupPriceUsd: 0 },
     cards, pending: null, rows: [],
@@ -419,12 +481,18 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const lit = night ? amen.nightShare * (LIVE.nightTicks * LIVE.tickMin / 60 / SEASON.lifts.hoursPerDay) : 1
   const comfort = Math.floor(liftComfortGuests(running) * liftStaffing * overtime * lit)
   const liftCap = Math.floor(comfort * SEASON.lifts.hardCapMultiple)
-  const parkingCap = amen.parkingCapGuests
+  const lotCap = amen.parkingCapGuests
+  const shuttleGuests = live.shuttle && Number.isFinite(lotCap) ? Math.max(LIVE.shuttleMinGuests, lotCap * LIVE.shuttleShareOfLot) : 0
+  const parkingCap = lotCap + shuttleGuests
 
   // Demand this tick. Pass holders ignore the day price; promos and the price touch day tickets only.
   let wantDay: number, wantPass: number
+  // Half-day ticket: from noon, afternoon arrivals buy it (late extended-hours arrivals keep the twilight ticket).
+  const halfDay = !night && !late && live.halfDayUsd && t >= LIVE.halfDayFromTick ? live.halfDayUsd : null
   if (!night) {
-    const priceFactor = Math.pow(D.referencePriceUsd / live.priceUsd, D.priceElasticity)
+    const priceFactor = halfDay
+      ? Math.pow((D.referencePriceUsd * LIVE.halfDayRefShare) / halfDay, D.priceElasticity) * (1 + LIVE.halfDayNewShare)
+      : Math.pow(D.referencePriceUsd / live.priceUsd, D.priceElasticity)
     const powder = prep.newSnowIn >= POWDER_DAY_IN ? live.promo.powderMult ?? 1 : 1
     wantDay = w * (prep.locals * (1 - prep.passAdoption) * (live.promo.localMult ?? 1) + prep.visitors * live.promo.visitorMult)
       * Math.min(MAX_DEMAND_MULT, live.promo.dayDemandMult * powder) * priceFactor * fx.dayDemandMult * condScale * outage
@@ -445,11 +513,18 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   // A booked group arrives over a few ticks at a flat price.
   const group = !night && t < fx.groupUntil ? fx.groupPerTick : 0
 
-  const price = night ? live.nightPriceUsd : late ? Math.round(live.priceUsd * LIVE.lateTicketMult) : live.priceUsd
+  const price = night ? live.nightPriceUsd : late ? Math.round(live.priceUsd * LIVE.lateTicketMult) : halfDay ?? live.priceUsd
   const ticketRev = dayG * price * (night ? 1 : live.promo.priceMult) + group * fx.groupPriceUsd
   const allGuests = guests + group
-  const food = allGuests * M.foodPerGuestUsd * amen.foodMult
-  const extras = (dayG + group) * (amen.extrasPerDayGuestUsd - amen.lessonsPerDayGuestUsd * (1 - staff.ratios.instructors))
+  // Half-day skiers are on the hill for less time: a bit less food, fewer rentals and lessons.
+  const halfFood = halfDay ? LIVE.halfDayFoodMult : 1
+  const halfExtras = halfDay ? LIVE.halfDayExtrasMult : 1
+  const food = (allGuests - dayG + dayG * halfFood) * M.foodPerGuestUsd * amen.foodMult
+  const extras = (dayG * halfExtras + group) * (amen.extrasPerDayGuestUsd - amen.lessonsPerDayGuestUsd * (1 - staff.ratios.instructors))
+  // Shuttle: a day's hire when it starts (the first tick it runs), plus each guest it carries.
+  const shuttleFirst = live.shuttle && !live.acc.shuttleStarted
+  const carried = live.shuttle ? Math.max(0, guests - lotCap * w) : 0
+  const shuttleCost = shuttleGuests > 0 ? (shuttleFirst ? LIVE.shuttleDayUsd : 0) + carried * LIVE.shuttlePerGuestUsd : 0
 
   // Costs accrue every tick: fixed running costs by the hour, lifts only while running.
   const ticks = night ? LIVE.nightTicks : LIVE.dayTicks
@@ -476,11 +551,13 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
         lifts: (finMod.costs * liftDaily * amen.nightShare * 0.5) / ticks,
         overhead: 0, snowmaking: 0, guests: guestCost, lights: amen.nightCostUsd / ticks,
       }
-  const cost = tickParts.payroll + tickParts.lifts + tickParts.overhead + tickParts.snowmaking + tickParts.guests + tickParts.lights
+  tickParts.services = shuttleCost
+  const cost = tickParts.payroll + tickParts.lifts + tickParts.overhead + tickParts.snowmaking + tickParts.guests + tickParts.lights + shuttleCost
   const prevParts = live.acc.parts ?? NO_PARTS
   const parts: CostParts = {
     payroll: prevParts.payroll + tickParts.payroll, lifts: prevParts.lifts + tickParts.lifts, overhead: prevParts.overhead + tickParts.overhead,
     snowmaking: prevParts.snowmaking + tickParts.snowmaking, guests: prevParts.guests + tickParts.guests, lights: prevParts.lights + tickParts.lights,
+    services: (prevParts.services ?? 0) + shuttleCost,
   }
 
   // Lift line: guests on the hill against the lift capacity right now.
@@ -492,7 +569,21 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const load = comfort > 0 ? onHill / (comfort * peak) : 4
   const queueMin = Math.round(Math.max(0, load - 0.7) * 25)
 
-  const revenue = ticketRev + food + extras
+  // Après: once, as it opens at 3 pm, from the guests on the hill then.
+  let apresResult = live.apresResult
+  let apresRev = 0, apresCost = 0
+  if (live.apres && !apresResult && !night && t === LIVE.apresFromTick) {
+    const seats = amen.lodgeSeats ?? Infinity
+    const wantIn = onHill * LIVE.apresTakeRate
+    const served = Math.min(wantIn, seats)
+    apresRev = served * LIVE.apresSpendUsd * amen.foodMult
+    apresCost = LIVE.apresSetupUsd + (Number.isFinite(seats) ? seats : 0) * LIVE.apresSetupPerSeatUsd + apresRev * LIVE.apresSupplyShare
+    const reputationDelta = wantIn > seats * LIVE.apresCrowdedAt ? LIVE.apresRepCrowded : wantIn > 0 ? LIVE.apresRepGood : 0
+    apresResult = { wanted: Math.round(wantIn), served: Math.round(served), revenueUsd: Math.round(apresRev), costUsd: Math.round(apresCost), reputationDelta }
+    parts.services = (parts.services ?? 0) + apresCost
+  }
+
+  const revenue = ticketRev + food + extras + apresRev
   const row: LiveTick = {
     tick: t, arrived: allGuests, onHill: Math.round(onHill), queueMin, turnedAway: away, revenueUsd: Math.round(revenue),
     lifts: factors.filter((f) => f > 0).length, priceUsd: price,
@@ -501,11 +592,14 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const acc: Acc = {
     ...a,
     guests: a.guests + allGuests, dayGuests: a.dayGuests + dayG + group, wanted: a.wanted + wanted + group,
-    parkingAway: a.parkingAway + parkingAway, ticketRev: a.ticketRev + ticketRev, food: a.food + food, extras: a.extras + extras,
-    cost: a.cost + cost, peakWait: night ? a.peakWait : Math.max(a.peakWait, queueMin),
+    parkingAway: a.parkingAway + parkingAway, ticketRev: a.ticketRev + ticketRev, food: a.food + food + apresRev, extras: a.extras + extras,
+    cost: a.cost + cost + apresCost, ...(live.shuttle ? { shuttleStarted: true } : {}), peakWait: night ? a.peakWait : Math.max(a.peakWait, queueMin),
     nightGuests: a.nightGuests + (night ? allGuests : 0), nightRev: a.nightRev + (night ? revenue : 0), parts,
   }
-  return { ...live, tick: t + 1, rows: [...live.rows, row], acc }
+  return {
+    ...live, tick: t + 1, rows: [...live.rows, row], acc,
+    ...(apresResult !== live.apresResult ? { apresResult, repDelta: live.repDelta + (apresResult?.reputationDelta ?? 0) } : {}),
+  }
 }
 
 /** Auto-answer every card with its default option and play the rest of the day. */
@@ -568,9 +662,13 @@ export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs, 
       costParts: {
         payroll: Math.round(a.parts.payroll), lifts: Math.round(a.parts.lifts), overhead: Math.round(a.parts.overhead),
         snowmaking: Math.round(a.parts.snowmaking), guests: Math.round(a.parts.guests), lights: Math.round(a.parts.lights),
+        services: Math.round(a.parts.services ?? 0),
       },
     } : {}),
     ...(open && live.late ? { late: true } : {}),
+    ...(open && live.apresResult ? { apres: live.apresResult } : {}),
+    ...(open && live.shuttle ? { shuttle: true } : {}),
+    ...(open && live.halfDayUsd ? { halfDayUsd: live.halfDayUsd } : {}),
     ...(open ? { peakOnHill: Math.max(0, ...live.rows.map((r) => r.onHill)), hourly: live.rows.map((r) => Math.round(r.arrived)) } : {}),
     ...(impact ? { impact } : {}),
   }
@@ -614,6 +712,28 @@ export function setLiveOvertime(live: LiveDay, on: boolean): LiveDay {
   return logged(live, { ...live, ops: { ...live.ops, overtime: on } }, { tick: live.tick, kind: 'overtime', on })
 }
 
+/** Half-day ticket price from noon (null stops selling it). Applies to arrivals from now. */
+export function setLiveHalfDay(live: LiveDay, priceUsd: number | null): LiveDay {
+  const v = priceUsd === null ? null : clamp(Math.round(priceUsd), 10, 250)
+  if ((live.halfDayUsd ?? null) === v) return live
+  return logged(live, { ...live, halfDayUsd: v }, { tick: live.tick, kind: 'halfDay', value: v })
+}
+
+/** Après special: can be booked or called off until it opens at 3 pm. */
+export function setLiveApres(live: LiveDay, on: boolean): LiveDay {
+  if (live.tick > LIVE.apresFromTick || live.apresResult || !!live.apres === on) return live
+  return logged(live, { ...live, apres: on }, { tick: live.tick, kind: 'apres', on })
+}
+
+/** Overflow shuttle: once called, it runs for the rest of the day (the day's hire is paid). */
+export function setLiveShuttle(live: LiveDay, on: boolean): LiveDay {
+  if (!on || live.shuttle || live.tick >= dayEnd(live)) return live
+  return logged(live, { ...live, shuttle: true }, { tick: live.tick, kind: 'shuttle', on: true })
+}
+
+/** Default half-day price: 75% of the day price, to the nearest $5. */
+export const defaultHalfDayUsd = (dayPriceUsd: number) => Math.max(10, Math.round((dayPriceUsd * 0.75) / 5) * 5)
+
 /** Extended hours (lifts to 5:00 pm, crew on overtime): can be switched until 4:00 pm. */
 export function setLiveLate(live: LiveDay, on: boolean): LiveDay {
   if (live.tick >= LIVE.dayTicks || !!live.late === on) return live
@@ -624,9 +744,9 @@ export function setLiveLate(live: LiveDay, on: boolean): LiveDay {
 
 export interface AfternoonOption {
   /** 'combo' = every option that pays on its own, together. */
-  id: 'overtime' | 'late' | 'night' | 'combo'
+  id: Single | 'combo'
   /** For 'combo': what it switches on. */
-  parts?: ('overtime' | 'late' | 'night')[]
+  parts?: Single[]
   /** Estimated change to today's net from switching it on now. */
   gainUsd: number
   /** Extra guests in the estimate. */
@@ -634,6 +754,8 @@ export interface AfternoonOption {
 }
 
 export interface AfternoonCheck {
+  /** Which pop-up: the 2 pm check, or the lot filling up. Absent = afternoon. */
+  kind?: 'afternoon' | 'parking'
   options: AfternoonOption[]
   /** Guests turned away so far today (why overtime might help). */
   turnedAwaySoFar: number
@@ -667,33 +789,59 @@ export function answerAfternoon(live: LiveDay, choice: AfternoonOption['id'] | '
  * answer cards differently. Only options worth at least `afternoonMinGainUsd` are returned.
  */
 export function afternoonCheck(live: LiveDay, inp: SeasonInputs): AfternoonCheck {
-  const lights = (inp.amenity ?? NEUTRAL_EFFECTS).nightShare > 0
+  const amen = inp.amenity ?? NEUTRAL_EFFECTS
+  const singles: Single[] = []
+  if (!live.ops.overtime) singles.push('overtime')
+  if (!live.late) singles.push('late')
+  if (amen.nightShare > 0 && !live.night) singles.push('night')
+  if (!live.apres && !live.apresResult) singles.push('apres')
+  if (!live.shuttle && live.acc.parkingAway > 0) singles.push('shuttle')
+  return { kind: 'afternoon', options: bestOptions(live, inp, singles), turnedAwaySoFar: Math.round(live.rows.reduce((s, r) => s + r.turnedAway, 0)) }
+}
+
+/** Is it time for the lot-full check: the lot turned guests away in the last half hour, shuttle not running? */
+export const parkingDue = (live: LiveDay) =>
+  live.prep.open && !live.parkingCheckDone && !live.pending && !live.shuttle && live.tick < LIVE.dayTicks
+  && (live.rows.at(-1)?.turnedAway ?? 0) > 0 && live.acc.parkingAway > 0
+
+/** Lot full: would an overflow shuttle pay for the rest of the day? */
+export function parkingCheck(live: LiveDay, inp: SeasonInputs): AfternoonCheck {
+  return { kind: 'parking', options: bestOptions(live, inp, ['shuttle']), turnedAwaySoFar: Math.round(live.acc.parkingAway) }
+}
+
+/** Run the lot-full check if it is due: marks it done and, if the shuttle should pay, leaves an offer. */
+export function runParkingCheck(live: LiveDay, inp: SeasonInputs): LiveDay {
+  if (!parkingDue(live)) return live
+  const check = parkingCheck(live, inp)
+  return { ...live, parkingCheckDone: true, afternoonOffer: check.options.length ? check : null }
+}
+
+/** Each single option that pays, plus all of them together if that beats the best one. */
+function bestOptions(live: LiveDay, inp: SeasonInputs, singles: Single[]): AfternoonOption[] {
   const base = runToEnd(live, inp)
-  const options: AfternoonOption[] = []
-  const tryIt = (id: AfternoonOption['id'], parts: Single[]) => {
+  const tryIt = (id: AfternoonOption['id'], parts: Single[]): AfternoonOption => {
     const end = runToEnd(applyParts(live, parts), inp)
     const gainUsd = Math.round(netOf(end) - netOf(base))
     return { id, gainUsd, extraGuests: Math.round(end.acc.guests - base.acc.guests), ...(id === 'combo' ? { parts } : {}) }
   }
-  const singles: Single[] = []
-  if (!live.ops.overtime) singles.push('overtime')
-  if (!live.late) singles.push('late')
-  if (lights && !live.night) singles.push('night')
+  const options: AfternoonOption[] = []
   for (const id of singles) {
     const o = tryIt(id, [id])
     if (o.gainUsd >= LIVE.afternoonMinGainUsd) options.push(o)
   }
-  // Everything that pays on its own, together, if that beats the best single option.
   if (options.length >= 2) {
     const combo = tryIt('combo', options.map((o) => o.id as Single))
     if (combo.gainUsd > Math.max(...options.map((o) => o.gainUsd))) options.push(combo)
   }
-  return { options, turnedAwaySoFar: Math.round(live.rows.reduce((s, r) => s + r.turnedAway, 0)) }
+  return options
 }
 
-type Single = 'overtime' | 'late' | 'night'
+export type Single = 'overtime' | 'late' | 'night' | 'apres' | 'shuttle'
 function applyParts(live: LiveDay, parts: Single[]): LiveDay {
   let l = live
-  for (const p of parts) l = p === 'overtime' ? setLiveOvertime(l, true) : p === 'late' ? setLiveLate(l, true) : setLiveNight(l, true)
+  for (const p of parts) {
+    l = p === 'overtime' ? setLiveOvertime(l, true) : p === 'late' ? setLiveLate(l, true) : p === 'night' ? setLiveNight(l, true)
+      : p === 'apres' ? setLiveApres(l, true) : setLiveShuttle(l, true)
+  }
   return l
 }

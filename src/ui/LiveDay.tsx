@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  LIVE, answerAfternoonOffer, answerLiveCard, checkAfternoon, dayEnd, finishDay, setLiveLate, setLiveOvertime, forecast, liveDayDone, playTick, seasonDate, seasonInputs, setLiftMode, setLiveNight, setLiveNightPrice,
+  LIVE, answerAfternoonOffer, answerLiveCard, checkAfternoon, checkParking, dayEnd, defaultHalfDayUsd, finishDay, setLiveApres, setLiveHalfDay, setLiveLate, setLiveOvertime, setLiveShuttle, forecast, liveDayDone, playTick, seasonDate, seasonInputs, setLiftMode, setLiveNight, setLiveNightPrice,
   setLivePrice, siteById, startDay, tickTime, priceForDay, PRICING,
   type DayResult, type GameState, type LiftMode, type LiveDay,
 } from '../sim'
@@ -23,6 +23,8 @@ const AFTERNOON_LABEL = {
   overtime: 'Overtime crew to close (+15% lift capacity)',
   late: 'Stay open to 5 pm (crew on overtime)',
   night: 'Run the night session (5–9 pm)',
+  apres: 'Après special at the lodge (3 pm)',
+  shuttle: 'Overflow parking shuttle',
 } as const
 /** Real seconds for one 30-minute tick at 1×. */
 const TICK_SEC_AT_1X = 8
@@ -111,6 +113,11 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
     // 2 pm: ask about overtime and the night session if either should pay off (pauses until answered).
     if (live.prep.open && !live.afternoonDone && live.tick === LIVE.afternoonTick && !auto) {
       onChange(checkAfternoon(gameRef.current, site))
+      return
+    }
+    // The lot just filled: offer the overflow shuttle if it should pay (once a day).
+    if (!auto && !live.parkingCheckDone && !live.shuttle && live.acc.parkingAway > 0 && (live.rows.at(-1)?.turnedAway ?? 0) > 0 && live.tick < LIVE.dayTicks) {
+      onChange(checkParking(gameRef.current, site))
       return
     }
     const id = setTimeout(() => {
@@ -264,6 +271,32 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
                 </button>
               </div>
               <div className="live-row">
+                <span>Half-day ticket<small className="block">{live.halfDayUsd ? `From noon · ${money(live.halfDayUsd)}` : 'Not sold today'}</small></span>
+                <button className={live.halfDayUsd ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveHalfDay(l, l.halfDayUsd ? null : defaultHalfDayUsd(l.priceUsd)))}>
+                  {live.halfDayUsd ? 'On' : 'Off'}
+                </button>
+                {!!live.halfDayUsd && !done && live.tick < LIVE.dayTicks && (
+                  <>
+                    <button className="btn" aria-label="Lower half-day price" onClick={() => edit((l) => setLiveHalfDay(l, (l.halfDayUsd ?? 0) - PRICING.stepUsd))}>−</button>
+                    <button className="btn" aria-label="Raise half-day price" onClick={() => edit((l) => setLiveHalfDay(l, (l.halfDayUsd ?? 0) + PRICING.stepUsd))}>+</button>
+                  </>
+                )}
+              </div>
+              <div className="live-row">
+                <span>Après special<small className="block">{live.apresResult
+                  ? `Seated ${live.apresResult.served} of ${live.apresResult.wanted} · ${money(live.apresResult.revenueUsd - live.apresResult.costUsd)}`
+                  : live.apres ? `Booked for 3 pm · ${inp.amenity?.lodgeSeats ?? '—'} seats` : `3 pm at the lodge · ${inp.amenity?.lodgeSeats ?? '—'} seats`}</small></span>
+                <button className={live.apres ? 'btn primary' : 'btn'} disabled={done || live.tick > LIVE.apresFromTick || !!live.apresResult} onClick={() => edit((l) => setLiveApres(l, !l.apres))}>
+                  {live.apres ? 'On' : 'Off'}
+                </button>
+              </div>
+              <div className={`live-row${!live.shuttle && (row?.turnedAway ?? 0) > 0 && live.acc.parkingAway > 0 ? ' alert' : ''}`}>
+                <span>Overflow shuttle<small className="block">{live.shuttle ? 'Running for the rest of the day' : live.acc.parkingAway > 0 ? `Lot full: ${Math.round(live.acc.parkingAway).toLocaleString()} turned away so far` : `Lot ${Math.round(inp.amenity?.parkingCapGuests ?? 0).toLocaleString()} guests/day · $${LIVE.shuttleDayUsd.toLocaleString()} a day + $${LIVE.shuttlePerGuestUsd}/guest`}</small></span>
+                <button className={live.shuttle ? 'btn primary' : 'btn'} disabled={done || live.tick >= dayEnd(live) || !!live.shuttle} onClick={() => edit((l) => setLiveShuttle(l, true))}>
+                  {live.shuttle ? 'On' : 'Call'}
+                </button>
+              </div>
+              <div className="live-row">
                 <span>Open to 5 pm<small className="block">{live.late ? `Extra hour, crew on overtime · twilight ticket ${money(Math.round(live.priceUsd * LIVE.lateTicketMult))}` : 'Lifts close at 4 pm'}</small></span>
                 <button className={live.late ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveLate(l, !l.late))}>
                   {live.late ? 'On' : 'Off'}
@@ -358,10 +391,12 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
       {offer && live && !pending && (
         <div className="card-overlay" role="dialog" aria-label="Afternoon check">
           <div className="event-card">
-            <small>{clock(live.tick, !!live.late)} · afternoon check</small>
-            <h3>Busy afternoon: worth staying on?</h3>
+            <small>{clock(live.tick, !!live.late)} · {offer.kind === 'parking' ? 'parking' : 'afternoon check'}</small>
+            <h3>{offer.kind === 'parking' ? 'The lot is full' : 'Busy afternoon: worth staying on?'}</h3>
             <p>
-              {offer.turnedAwaySoFar > 0 ? `${offer.turnedAwaySoFar.toLocaleString()} skiers have given up at the lifts so far. ` : ''}
+              {offer.kind === 'parking'
+                ? `${offer.turnedAwaySoFar.toLocaleString()} skiers have turned around at a full lot. `
+                : offer.turnedAwaySoFar > 0 ? `${offer.turnedAwaySoFar.toLocaleString()} skiers have given up so far. ` : ''}
               Estimates for the rest of today, if later events go the usual way:
             </p>
             {offer.options.map((o) => (

@@ -96,6 +96,8 @@ export const AMENITY_TUNING = {
   /** Extra school appeal when the mountain has green terrain. */
   schoolGreenBonus: 0.02,
   bedsPerHousingLevel: 40,
+  /** Seats in the lodge for an après special, by lodge level (warming hut … grand lodge). */
+  lodgeSeats: [60, 150, 260, 400, 560],
   /** Share of lift capacity lit for night skiing, by lighting level. */
   lightsShare: [0, 0.35, 0.7],
   /** Power and extra crew per night session, by lighting level. */
@@ -119,6 +121,8 @@ export interface AmenityEffects {
   /** Night skiing: share of lift capacity lit (0 = no lights) and the cost of one night. */
   nightShare: number
   nightCostUsd: number
+  /** Lodge seats for an après special (absent = unlimited, older tests). */
+  lodgeSeats?: number
 }
 
 export const NEUTRAL_EFFECTS: AmenityEffects = {
@@ -144,6 +148,7 @@ export function amenityEffects(a: AmenityLevels, hasGreenTerrain: boolean): Amen
     dailyCostUsd: daily,
     nightShare: T.lightsShare[a.lights ?? 0] ?? 0,
     nightCostUsd: T.lightsNightCostUsd[a.lights ?? 0] ?? 0,
+    lodgeSeats: T.lodgeSeats[Math.min(a.lodge, T.lodgeSeats.length - 1)],
   }
 }
 

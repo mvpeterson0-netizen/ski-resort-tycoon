@@ -6,7 +6,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   PRICING, PROMOS, PROMO_KINDS, SEASON, bookCampaign, campaignBlocker, campaignCostUsd, cancelPromo, costOf, clampPrice, dayKind, estimatePassSales, forecast, priceForDay, promoEnd, promoResults, promoStatus,
-  resolvedPrices, seasonDate, seasonInputs, setDayOps, setKindPrice, setPassPrice, setTicketPrice, siteById,
+  defaultHalfDayUsd, resolvedPrices, seasonDate, seasonInputs, setDayOps, setHalfDayPrice, setKindPrice, setPassPrice, setTicketPrice, siteById,
   type DayKind, type DayOps, type GameState, type Promo, type PromoKind,
 } from '../sim'
 import { usd } from './format'
@@ -21,15 +21,15 @@ const dayName = (year: number, day: number) => {
 
 type Tab = 'prices' | 'calendar' | 'marketing'
 
-function Stepper({ label, hint, value, step = PRICING.stepUsd, onSet, badge, onReset, disabled }: {
-  label: string; hint?: ReactNode; value: number; step?: number; onSet: (v: number) => void; badge?: string; onReset?: () => void; disabled?: boolean
+function Stepper({ label, hint, value, step = PRICING.stepUsd, onSet, badge, onReset, resetLabel = 'Use default', disabled }: {
+  label: string; hint?: ReactNode; value: number; step?: number; onSet: (v: number) => void; badge?: string; onReset?: () => void; resetLabel?: string; disabled?: boolean
 }) {
   return (
     <div className="panel price">
       <span>
         {label}{badge && <em className="badge-inline">{badge}</em>}
         {hint && <small className="block">{hint}</small>}
-        {onReset && <button className="link" onClick={onReset}>Use default</button>}
+        {onReset && <button className="link" onClick={onReset}>{resetLabel}</button>}
       </span>
       <button className="btn" aria-label={`Lower ${label}`} disabled={disabled} onClick={() => onSet(value - step)}>−</button>
       <b>${value}</b>
@@ -80,6 +80,18 @@ function BasePrices({ game, onChange }: { game: GameState; onChange: (g: GameSta
         label="Holiday" hint="Dec 24–Jan 1, MLK and Presidents' Day weekends" value={p.holiday} badge={game.calendar.holiday === null ? 'default' : undefined}
         onSet={(v) => cal('holiday', v)} onReset={game.calendar.holiday === null ? undefined : () => cal('holiday', null)}
       />
+      {game.calendar.halfDay ? (
+        <Stepper
+          label="Half-day" hint="From noon, every day. Pays when there is room on the hill; on full days everyone after noon pays less."
+          value={game.calendar.halfDay} onSet={(v) => onChange({ ...game, calendar: setHalfDayPrice(game.calendar, v) })}
+          onReset={() => onChange({ ...game, calendar: setHalfDayPrice(game.calendar, null) })} resetLabel="Stop selling"
+        />
+      ) : (
+        <div className="panel price">
+          <span>Half-day<small className="block">Not sold. A cheaper ticket from noon brings out people who would not pay for a full day.</small></span>
+          <button className="btn" onClick={() => onChange({ ...game, calendar: setHalfDayPrice(game.calendar, defaultHalfDayUsd(game.ticketPriceUsd)) })}>Sell from noon</button>
+        </div>
+      )}
       {lights && <Stepper label="Night session" hint="5:00 to 9:00 pm, on nights you run the lights" value={p.night} onSet={(v) => cal('night', clampPrice(v))} />}
       <p className="hint small">Weekend and holiday prices follow the weekday price until you set them. Change any single day on the calendar.</p>
 

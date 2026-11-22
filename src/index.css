@@ -269,6 +269,7 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .live-row { display: flex; align-items: center; gap: 8px; }
 .live-row > span { flex: 1; }
 .live-row .btn { min-height: 44px; min-width: 52px; padding: 0 12px; }
+.live-row.alert { background: var(--note-bg); border: 1px solid var(--note-line); border-radius: 8px; padding: 4px 6px; margin: 0 -6px; }
 .live-row b { min-width: 44px; text-align: center; }
 .live-panel .hint.small { margin: 0; }
 .chip.lift-slow { background: #fff3d6; border-color: #e4b33a; color: #6b5310; }
