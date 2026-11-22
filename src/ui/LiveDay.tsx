@@ -347,6 +347,11 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
               Lot {Math.round(row.lotPct * 100)}%{row.lotPct >= 1 ? ' FULL' : ''}
             </span>
           )}
+          {row && row.liftPct !== undefined && (
+            <span className={row.liftPct >= 1 ? 'lot-full' : row.liftPct >= 0.9 ? 'lot-near' : ''} title="Lifts: demand against what the running lifts can carry">
+              Lifts {Math.round(row.liftPct * 100)}%{row.liftPct >= 1 ? ' FULL' : ''}
+            </span>
+          )}
           {row && <span>Line {row.queueMin} min</span>}
           {live && live.prep.open && <span className={liveNet(live) < 0 ? 'neg' : ''}>Today {money(liveNet(live))}</span>}
           {live && <span>Snow {live.prep.baseIn}″{live.prep.newSnowIn > 0 ? ` · +${live.prep.newSnowIn}″` : ''}</span>}
