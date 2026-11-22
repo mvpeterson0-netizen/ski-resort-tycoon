@@ -201,6 +201,12 @@ with a reduced off-season (building, hiring, financing, summer activities).
   midweek 2-for-1 (×1.6 demand, 60% revenue per ticket), powder alert; booked with a lead time,
   cost paid on the first day, stacking capped at ×1.7. Night lighting is an amenity (2 levels, lit
   share 35%/70% of lift capacity, power+crew per night run). All PLACEHOLDER.
+- **Campaign status and results (owner request):** booked campaigns on the Marketing tab show
+  Scheduled (with Cancel), Running or Completed (`promoStatus`; "today" = next day to be played, so a
+  campaign ending yesterday is completed). Tap a running or completed one for its results
+  (`promoResults`: days played, extra skiers, extra sales, net before cost, cost, result, per-day
+  table), summed from each day's replay comparison. A campaign's cost is charged on its first day
+  even if the resort is closed that day.
 - **Event cards:** each event pauses the day with 2 options (e.g. lift breakdown: standard repair or
   2.2× rush crew back in 2 h; outage: wait or generators; lawsuit: settle or fight; race: host or
   decline; new group-booking offers). The default option reproduces the old automatic outcome.

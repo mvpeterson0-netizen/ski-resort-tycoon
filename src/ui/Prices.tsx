@@ -5,9 +5,9 @@
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import {
-  PRICING, PROMOS, PROMO_KINDS, SEASON, bookPromo, cancelPromo, clampPrice, dayKind, estimatePassSales, forecast, priceForDay, promoEnd,
+  PRICING, PROMOS, PROMO_KINDS, SEASON, bookPromo, cancelPromo, clampPrice, dayKind, estimatePassSales, forecast, priceForDay, promoEnd, promoResults, promoStatus,
   resolvedPrices, seasonDate, seasonInputs, setDayOps, setKindPrice, setPassPrice, setTicketPrice, siteById,
-  type DayKind, type DayOps, type GameState, type PromoKind,
+  type DayKind, type DayOps, type GameState, type Promo, type PromoKind,
 } from '../sim'
 import { usd } from './format'
 
@@ -216,11 +216,63 @@ function CalendarTab({ game, onChange }: { game: GameState; onChange: (g: GameSt
   )
 }
 
+const signedMoney = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
+
+/** What a campaign did, from the comparison recorded on each day it ran. */
+function PromoResultsCard({ game, promo, status }: { game: GameState; promo: Promo; status: 'running' | 'completed' }) {
+  const r = promoResults(promo, game.season?.days ?? [])
+  const spec = PROMOS[promo.kind]
+  const played = r.perDay.length > 0 || r.daysPlayed > 0
+  return (
+    <div className="promo-results">
+      {!played ? (
+        <p className="hint">No results yet. They appear once the days it runs have been played.</p>
+      ) : (
+        <>
+          <table className="rep-table">
+            <tbody>
+              <tr><th>Days played</th><td>{r.daysPlayed} of {r.daysTotal}</td></tr>
+              <tr><th>Extra day skiers<small>vs the same days without it</small></th><td>{r.extraGuests >= 0 ? '+' : '−'}{Math.abs(r.extraGuests).toLocaleString('en-US')}</td></tr>
+              <tr><th>Extra sales<small>tickets, food, rentals</small></th><td>{signedMoney(r.extraRevenueUsd)}</td></tr>
+              <tr><th>Net before the campaign cost</th><td className={r.netBeforeCostUsd < 0 ? 'down' : 'up'}>{signedMoney(r.netBeforeCostUsd)}</td></tr>
+              <tr><th>Campaign cost<small>paid on the first day</small></th><td>−${r.costUsd.toLocaleString('en-US')}</td></tr>
+              <tr><th>Result{status === 'running' ? ' so far' : ''}</th><td className={r.netUsd < 0 ? 'down' : 'up'}>{signedMoney(r.netUsd)}</td></tr>
+            </tbody>
+          </table>
+          <p className="rep-foot">
+            {status === 'completed'
+              ? (r.netUsd > 0 ? 'It paid for itself.' : 'It did not pay for itself.')
+              : (r.netUsd > 0 ? 'Paying off so far.' : 'Not paid off yet.')}
+            {spec.weekdaysOnly && r.perDay.some((d) => d.extraGuests === 0) ? ' Weekdays only: weekends in its window had no effect.' : ''}
+            {r.daysWithoutResults > 0 ? ` ${r.daysWithoutResults} day${r.daysWithoutResults > 1 ? 's' : ''} had no comparison recorded.` : ''}
+            {' '}This counts sales on the days it ran; it does not include reputation or later days.
+          </p>
+          {r.perDay.length > 1 && (
+            <table className="rep-table">
+              <thead><tr><th>Day</th><td>Extra skiers</td><td>Net</td></tr></thead>
+              <tbody>
+                {r.perDay.map((d) => (
+                  <tr key={d.day}>
+                    <th>{dayName(game.year, d.day)}</th>
+                    <td>{d.extraGuests >= 0 ? '+' : '−'}{Math.abs(Math.round(d.extraGuests))}</td>
+                    <td className={d.netBeforeCostUsd < 0 ? 'down' : 'up'}>{signedMoney(d.netBeforeCostUsd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function MarketingTab({ game, onChange }: { game: GameState; onChange: (g: GameState) => void }) {
   const inSeason = game.phase === 'season'
   const today = inSeason ? game.season?.day ?? 0 : -99
   const [start, setStart] = useState<Record<string, number>>({})
   const [msg, setMsg] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const firstDay = (k: PromoKind) => Math.max(0, today + PROMOS[k].leadDays)
   const options = (k: PromoKind) => Array.from({ length: 30 }, (_, i) => firstDay(k) + i).filter((d) => d < SEASON.lengthDays)
   const fc = game.season && inSeason ? forecast(game.season, game.difficulty.snow) : []
@@ -232,14 +284,27 @@ function MarketingTab({ game, onChange }: { game: GameState; onChange: (g: GameS
       {snowSoon && <p className="note">Storm forecast for {dayName(game.year, snowSoon.day)}: a powder alert on that day would catch the crowd.</p>}
       <h3 className="group">Booked</h3>
       {game.promos.length === 0 && <p className="hint">Nothing booked.</p>}
-      {game.promos.map((p) => (
-        <div key={p.id} className="panel price">
-          <span>{PROMOS[p.kind].name}<small className="block">{dayName(game.year, p.startDay)}{PROMOS[p.kind].lengthDays > 1 ? ` – ${dayName(game.year, promoEnd(p))}` : ''}</small></span>
-          {p.startDay > today
-            ? <button className="btn small-btn" onClick={() => onChange({ ...game, promos: cancelPromo(game.promos, p.id, today) })}>Cancel</button>
-            : <b>Running</b>}
-        </div>
-      ))}
+      {game.promos.map((p) => {
+        const status = promoStatus(p, today)
+        const dates = `${dayName(game.year, p.startDay)}${PROMOS[p.kind].lengthDays > 1 ? ` – ${dayName(game.year, promoEnd(p))}` : ''}`
+        const open = openId === p.id
+        return (
+          <div key={p.id} className={`promo-booked ${status}`}>
+            {status === 'scheduled' ? (
+              <div className="panel price">
+                <span>{PROMOS[p.kind].name}<small className="block">{dates} · scheduled</small></span>
+                <button className="btn small-btn" onClick={() => onChange({ ...game, promos: cancelPromo(game.promos, p.id, today) })}>Cancel</button>
+              </div>
+            ) : (
+              <button className="panel price promo-tap" aria-expanded={open} onClick={() => setOpenId(open ? null : p.id)}>
+                <span>{PROMOS[p.kind].name}<small className="block">{dates} · tap for results</small></span>
+                <b className={`promo-status ${status}`}>{status === 'running' ? 'Running' : 'Completed'} {open ? '▴' : '▾'}</b>
+              </button>
+            )}
+            {open && status !== 'scheduled' && <PromoResultsCard game={game} promo={p} status={status} />}
+          </div>
+        )
+      })}
       <h3 className="group">Book a campaign</h3>
       {msg && <p className="warn">{msg}</p>}
       {PROMO_KINDS.map((k) => {

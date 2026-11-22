@@ -158,3 +158,17 @@ describe('saves from before a building existed', () => {
     expect(parseSave(JSON.parse(JSON.stringify(g)))!.amenities).toEqual(g.amenities)
   })
 })
+
+describe('campaign cost on a closed day', () => {
+  it('is charged even if the resort is closed on its first day', () => {
+    const g0 = beginSeason(built(), site)
+    const closed = { ...g0, season: { ...g0.season!, openingDay: 50 } }
+    const b = bookPromo([], 'social', 0, -1)
+    if (!b.ok) throw new Error(b.reason)
+    const withPromo = advanceDay({ ...closed, promos: b.promos }, site).result
+    const without = advanceDay(closed, site).result
+    expect(withPromo.open).toBe(false)
+    expect(withPromo.marketingUsd).toBe(PROMOS.social.costUsd)
+    expect(withPromo.costUsd).toBe(without.costUsd + PROMOS.social.costUsd)
+  })
+})

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { newGame } from './game'
 import { planPurchase } from './economy'
 import { PRICING, clampPrice, dayKind, newCalendar, priceForDay, resolvedPrices, setDayOps, setKindPrice } from './pricing'
-import { MAX_DEMAND_MULT, PROMOS, bookPromo, cancelPromo, promoEffects, promoEnd } from './promos'
+import { MAX_DEMAND_MULT, PROMOS, bookPromo, cancelPromo, promoEffects, promoEnd, promoResults, promoStatus } from './promos'
 import { seasonDate } from './season'
 
 describe('price calendar', () => {
@@ -105,5 +105,44 @@ describe('promotions', () => {
     if (!r.ok) throw new Error('booking failed')
     expect(cancelPromo(r.promos, 'p1', 2)).toHaveLength(0)
     expect(cancelPromo(r.promos, 'p1', 5)).toHaveLength(1)
+  })
+})
+
+describe('campaign status and results', () => {
+  const social = (startDay: number) => {
+    const r = bookPromo([], 'social', startDay, 0)
+    if (!r.ok) throw new Error(r.reason)
+    return r.promos[0]
+  }
+
+  it('is scheduled before it starts, running through its last day, then completed', () => {
+    const p = social(5) // days 5–9
+    expect(promoStatus(p, 3)).toBe('scheduled')
+    expect(promoStatus(p, 5)).toBe('running')
+    expect(promoStatus(p, 9)).toBe('running') // the last day has not been played yet
+    expect(promoStatus(p, 10)).toBe('completed')
+  })
+
+  it('adds up what a campaign did from each played day, and the cost on its first day', () => {
+    const p = social(5)
+    const day = (d: number, extra: number, net: number) => ({ day: d, impact: { promos: [{ kind: 'social' as const, extraGuests: extra, extraRevenueUsd: extra * 90, netBeforeCostUsd: net }] } })
+    const r = promoResults(p, [day(4, 99, 999), day(5, 40, 3000), day(6, 50, 3800), day(7, 30, 2200), { day: 8 }, day(10, 77, 777)])
+    expect(r.daysPlayed).toBe(4) // days 5–8; day 4 and 10 are outside the campaign
+    expect(r.daysTotal).toBe(5)
+    expect(r.daysWithoutResults).toBe(1)
+    expect(r.extraGuests).toBe(120)
+    expect(r.extraRevenueUsd).toBe(10_800)
+    expect(r.netBeforeCostUsd).toBe(9000)
+    expect(r.costUsd).toBe(PROMOS.social.costUsd)
+    expect(r.netUsd).toBe(9000 - PROMOS.social.costUsd)
+    expect(r.perDay.map((x) => x.day)).toEqual([5, 6, 7])
+  })
+
+  it('charges nothing until the first day has been played, and has empty results before then', () => {
+    const p = social(5)
+    const r = promoResults(p, [])
+    expect(r.costUsd).toBe(0)
+    expect(r.extraGuests).toBe(0)
+    expect(r.netUsd).toBe(0)
   })
 })

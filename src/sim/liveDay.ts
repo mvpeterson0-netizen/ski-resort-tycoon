@@ -495,7 +495,8 @@ export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs, 
   const extrasRevenueUsd = Math.round(a.extras)
   const eventCostUsd = Math.round(a.eventCost)
   const eventIncomeUsd = Math.round(a.eventIncome)
-  const marketingUsd = open ? live.promo.marketingUsd : 0
+  // A campaign's cost comes out on its first day, even if the resort is closed that day.
+  const marketingUsd = live.promo.marketingUsd
   const costUsd = (open ? Math.round(a.cost) : prep.closedCostUsd) + eventCostUsd + marketingUsd
 
   let reputation = s.reputation

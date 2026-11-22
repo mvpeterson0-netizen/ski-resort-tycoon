@@ -375,3 +375,14 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .arrivals .bars i { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.85; }
 .arrivals .bars i.night { background: #5b4ba0; }
 .arrivals-axis { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--muted); margin-top: 2px; }
+
+/* Booked campaigns: status and results */
+.promo-booked { margin-bottom: 8px; }
+.promo-tap { width: 100%; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.promo-status { font-size: 0.82rem; white-space: nowrap; }
+.promo-status.running { color: var(--green); }
+.promo-status.completed { color: var(--muted); }
+.promo-booked.completed .promo-tap { opacity: 0.9; }
+.promo-results { margin: 4px 0 0; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; gap: 6px; }
+.promo-results .rep-foot { margin: 0; }
+.panel.price .btn.small-btn { white-space: nowrap; min-width: 92px; padding: 0 14px; flex: none; }

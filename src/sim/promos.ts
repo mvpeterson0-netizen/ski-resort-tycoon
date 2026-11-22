@@ -88,3 +88,59 @@ export function bookPromo(promos: Promo[], kind: PromoKind, startDay: number, to
 /** Cancel a campaign that has not started yet. */
 export const cancelPromo = (promos: Promo[], id: string, today: number): Promo[] =>
   promos.filter((p) => p.id !== id || p.startDay <= today)
+
+export type PromoStatus = 'scheduled' | 'running' | 'completed'
+
+/**
+ * Where a campaign stands. `today` is the next season day to be played (so a campaign that ended
+ * on an earlier day is completed, and one that includes today is still running).
+ */
+export function promoStatus(p: Promo, today: number): PromoStatus {
+  if (p.startDay > today) return 'scheduled'
+  return promoEnd(p) < today ? 'completed' : 'running'
+}
+
+export interface PromoResults {
+  /** Days of the campaign already played, and its full length. */
+  daysPlayed: number
+  daysTotal: number
+  /** Played days with no recorded comparison (for example days played before results existed). */
+  daysWithoutResults: number
+  extraGuests: number
+  extraRevenueUsd: number
+  /** Net effect before the campaign's own cost, and the cost paid (the first day). */
+  netBeforeCostUsd: number
+  costUsd: number
+  /** What the campaign earned or lost overall. */
+  netUsd: number
+  perDay: { day: number; extraGuests: number; netBeforeCostUsd: number }[]
+}
+
+/**
+ * What a campaign did, from the comparison each played day recorded (the day replayed without
+ * it). Works for a campaign still running (results so far) or finished.
+ */
+export function promoResults(
+  p: Promo,
+  days: { day: number; impact?: { promos?: { kind: PromoKind; extraGuests: number; extraRevenueUsd: number; netBeforeCostUsd: number }[] } }[],
+): PromoResults {
+  const end = promoEnd(p)
+  const mine = days.filter((d) => d.day >= p.startDay && d.day <= end)
+  const perDay: PromoResults['perDay'] = []
+  let extraGuests = 0, extraRevenueUsd = 0, netBeforeCostUsd = 0, without = 0
+  for (const d of mine) {
+    const r = d.impact?.promos?.find((x) => x.kind === p.kind)
+    if (!r) { without++; continue }
+    extraGuests += r.extraGuests
+    extraRevenueUsd += r.extraRevenueUsd
+    netBeforeCostUsd += r.netBeforeCostUsd
+    perDay.push({ day: d.day, extraGuests: r.extraGuests, netBeforeCostUsd: r.netBeforeCostUsd })
+  }
+  // The campaign's cost comes out on its first day, once that day has been played.
+  const costUsd = mine.some((d) => d.day === p.startDay) ? PROMOS[p.kind].costUsd : 0
+  return {
+    daysPlayed: mine.length, daysTotal: PROMOS[p.kind].lengthDays, daysWithoutResults: without,
+    extraGuests: Math.round(extraGuests), extraRevenueUsd: Math.round(extraRevenueUsd), netBeforeCostUsd: Math.round(netBeforeCostUsd),
+    costUsd, netUsd: Math.round(netBeforeCostUsd - costUsd), perDay,
+  }
+}
