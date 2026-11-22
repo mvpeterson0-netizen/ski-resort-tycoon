@@ -108,7 +108,7 @@ describe('calendar prices reach the day', () => {
     g = { ...g, promos: b.promos }
     const withPromo = advanceDay(g, site).result
     const without = advanceDay({ ...g, promos: [] }, site).result
-    expect(withPromo.marketingUsd).toBe(PROMOS.social.costUsd)
+    expect(withPromo.marketingUsd).toBe(PROMOS.social.minCostUsd)
     expect(withPromo.dayTicketGuests).toBeGreaterThanOrEqual(without.dayTicketGuests)
     expect(withPromo.costUsd).toBeGreaterThan(without.costUsd)
   })
@@ -168,7 +168,7 @@ describe('campaign cost on a closed day', () => {
     const withPromo = advanceDay({ ...closed, promos: b.promos }, site).result
     const without = advanceDay(closed, site).result
     expect(withPromo.open).toBe(false)
-    expect(withPromo.marketingUsd).toBe(PROMOS.social.costUsd)
-    expect(withPromo.costUsd).toBe(without.costUsd + PROMOS.social.costUsd)
+    expect(withPromo.marketingUsd).toBe(PROMOS.social.minCostUsd)
+    expect(withPromo.costUsd).toBe(without.costUsd + PROMOS.social.minCostUsd)
   })
 })

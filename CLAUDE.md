@@ -199,7 +199,7 @@ with a reduced off-season (building, hiring, financing, summer activities).
   +4" base × coverage) cleared each season. Holidays are the sim's holidays (Dec 24–Jan 1, MLK and
   Presidents' Day Sat–Mon). Marketing promos: social, radio, travel partner (visitors only),
   midweek 2-for-1 (×1.6 demand, 60% revenue per ticket), powder alert; booked with a lead time,
-  cost paid on the first day, stacking capped at ×1.7. Night lighting is an amenity (2 levels, lit
+  cost paid on the first day, stacking capped at ×1.7 (costs now scale with resort size; see Marketing rebalance). Night lighting is an amenity (2 levels, lit
   share 35%/70% of lift capacity, power+crew per night run). All PLACEHOLDER.
 - **Campaign status and results (owner request):** booked campaigns on the Marketing tab show
   Scheduled (with Cancel), Running or Completed (`promoStatus`; "today" = next day to be played, so a
@@ -207,6 +207,25 @@ with a reduced off-season (building, hiring, financing, summer activities).
   (`promoResults`: days played, extra skiers, extra sales, net before cost, cost, result, per-day
   table), summed from each day's replay comparison. A campaign's cost is charged on its first day
   even if the resort is closed that day.
+- **Marketing rebalance (owner request; `src/sim/promos.ts`, `bookCampaign` in `game.ts`):** campaign cost =
+  cost per market guest × the resort's daily market (`marketGuests` = market base × appeal × reputation), with a
+  floor; Midweek 2-for-1 also scales with spend per guest (`spendIndex`). Cost is fixed at booking (`Promo.costUsd`).
+  Tuned (A/B on the auto-player's Berthoud resort, years 1/3/5) so each campaign is slightly ahead at its
+  `bestTime` and behind otherwise: social push is now 3 days (best Fri–Sun/holiday weekend); radio and travel
+  partner best in holiday weeks; 2-for-1 ×1.7 demand at 65% price, best Jan–Mar weekdays (still ~+$15k at year 5,
+  bigger than "slight": flagged to owner); powder alert ×1.25 only on a 6″+ new-snow day. New **Hometown ski
+  club** (resorts with ≤ 2 lifts): 7 days, local day-ticket demand × a normal draw (mean 1.10, sd 0.05, clamped
+  0.95–1.25) made at booking from the game seed (rebooking the same dates gives the same draw); mean payoff a
+  slight gain, ~40% of runs lose. `marketing.test.ts` checks timing on the real resort. All PLACEHOLDER.
+- **Extended hours and the 2 pm check (owner request; `liveDay.ts`):** "Open to 5 pm" adds two day ticks
+  (16:00–17:00) before any night session: extra late arrivals (weights 6+5 on the day profile) at a 60% twilight
+  ticket, crew paid ×1.5, lifts and half the overhead. Switchable until 4 pm. Overtime crew can now be called in
+  mid-day (premium only for the remaining hours). At 2 pm the live screen pauses on an offer if overtime,
+  extended hours or the night session (or all that pay, together) would add ≥ $200 today, estimated by playing
+  the rest of the day each way (later cards on defaults). Skips and auto-play don't stop for it. Measured on the
+  auto-player's resort: offered on ~18% of open days in year 1, ~35–45% in years 3–10, almost always extended
+  hours; overtime alone almost never pays there (busy days are parking-limited, not lift-limited) and the
+  auto-player never builds lights. End-of-day feedback covers extended hours (used / missed). All PLACEHOLDER.
 - **Event cards:** each event pauses the day with 2 options (e.g. lift breakdown: standard repair or
   2.2× rush crew back in 2 h; outage: wait or generators; lawsuit: settle or fight; race: host or
   decline; new group-booking offers). The default option reproduces the old automatic outcome.

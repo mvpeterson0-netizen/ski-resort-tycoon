@@ -6,7 +6,7 @@ import { AMENITIES, NO_AMENITIES, amenityEffects, nextAmenityCost, type AmenityI
 import type { Difficulty, LiftPlan, LiftType, Pt, TrailPlan } from './build'
 import { ECON, planPurchase, type PurchasePlan } from './economy'
 import {
-  SEASON, seasonDate, seasonOver, seasonTotals, startSeason,
+  SEASON, appealOf, seasonDate, seasonOver, seasonTotals, startSeason,
   type DayResult, type SeasonInputs, type SeasonState, type SeasonTotals,
 } from './season'
 import type { Site } from './sites'
@@ -16,10 +16,12 @@ import { DEFAULT_DIFFICULTY, type DifficultySettings } from './difficultySetting
 import { closeYear, emptyBook, ensureLiquidity, type YearBook, type YearReport } from './finance'
 import type { BasePlacement } from './village'
 import { newCalendar, priceForDay, type PriceCalendar } from './pricing'
-import { promoEffects, type Promo } from './promos'
+import { PROMOS, bookPromo, luckMultFor, promoCostUsd, promoEffects, type Promo, type PromoKind, type PromoResult } from './promos'
+import { createRng } from './rng'
 import { computeImpact } from './impact'
 import {
-  answerCard, finishLiveDay, isDayDone, runToEnd, startLiveDay, tickLiveDay, type LiveContext, type LiveDay,
+  answerAfternoon, answerCard, finishLiveDay, isDayDone, runAfternoonCheck, runToEnd, startLiveDay, tickLiveDay,
+  type AfternoonOption, type LiveContext, type LiveDay,
 } from './liveDay'
 
 // v2 (step 4c): ownedParcels. v3 (step 5): trails, lifts. v4 (step 6): season.
@@ -372,6 +374,43 @@ export function liveContextFor(g: GameState): LiveContext {
   }
 }
 
+/** The resort's daily market in Saturday-equivalent guests (sizes campaign costs). */
+export function marketGuests(g: GameState, site: Site): number {
+  const inp = seasonInputs(g, site)
+  return SEASON.demand.marketBase * appealOf(inp) * (g.season?.reputation ?? g.reputation)
+}
+
+/** Food and rental spend per day guest, relative to a resort with no lodge or rentals. */
+export function spendIndex(g: GameState, site: Site): number {
+  const a = seasonInputs(g, site).amenity
+  if (!a) return 1
+  const M = SEASON.money
+  return (M.foodPerGuestUsd * a.foodMult + a.extrasPerDayGuestUsd) / M.foodPerGuestUsd
+}
+
+/** What a campaign would cost this resort now. */
+export const campaignCostUsd = (g: GameState, site: Site, kind: PromoKind) => promoCostUsd(kind, marketGuests(g, site), spendIndex(g, site))
+
+/** Why this resort cannot book a campaign at all (size limits), or null. */
+export function campaignBlocker(g: GameState, kind: PromoKind): string | null {
+  const max = PROMOS[kind].maxLifts
+  return max !== undefined && g.lifts.length > max ? `Small resorts only (${max} lift${max > 1 ? 's' : ''} or fewer)` : null
+}
+
+/**
+ * Book a campaign: the cost is fixed now from the resort's size, and a random campaign's result is
+ * drawn now from the game seed (so cancelling and rebooking the same dates gives the same draw).
+ */
+export function bookCampaign(g: GameState, site: Site, kind: PromoKind, startDay: number): PromoResult {
+  const why = campaignBlocker(g, kind)
+  if (why) return { ok: false, reason: why }
+  const today = g.phase === 'season' ? g.season?.day ?? 0 : -99
+  const rng = createRng((g.seed ^ Math.imul(g.year * 131 + startDay + 1, 0x9e3779b1) ^ Math.imul(PROMOS_INDEX[kind] + 7, 0x85ebca6b)) >>> 0)
+  const r = bookPromo(g.promos, kind, startDay, today, { costUsd: campaignCostUsd(g, site, kind), luckMult: luckMultFor(kind, rng.next(), rng.next()) })
+  return r
+}
+const PROMOS_INDEX = Object.fromEntries(Object.keys(PROMOS).map((k, i) => [k, i])) as Record<PromoKind, number>
+
 /** Begin playing the next season day hour by hour. No-op if a day is already under way. */
 export function startDay(g: GameState, site: Site): GameState {
   if (!g.season || g.phase !== 'season' || g.live) return g
@@ -386,6 +425,16 @@ export function playTick(g: GameState, site: Site): GameState {
 /** Answer the event card the day is paused on. */
 export function answerLiveCard(g: GameState, site: Site, optionId: string): GameState {
   return g.live ? { ...g, live: answerCard(g.live, seasonInputs(g, site), optionId) } : g
+}
+
+/** At 2 pm: check whether overtime or the night session should pay off today (pauses on an offer). */
+export function checkAfternoon(g: GameState, site: Site): GameState {
+  return g.live ? { ...g, live: runAfternoonCheck(g.live, seasonInputs(g, site)) } : g
+}
+
+/** Answer the 2 pm offer. */
+export function answerAfternoonOffer(g: GameState, choice: AfternoonOption['id'] | 'none'): GameState {
+  return g.live ? { ...g, live: answerAfternoon(g.live, choice) } : g
 }
 
 export const liveDayDone = (g: GameState, site: Site) => !!g.live && isDayDone(g.live, seasonInputs(g, site))

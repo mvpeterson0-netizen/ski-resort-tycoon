@@ -5,7 +5,7 @@
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import {
-  PRICING, PROMOS, PROMO_KINDS, SEASON, bookPromo, cancelPromo, clampPrice, dayKind, estimatePassSales, forecast, priceForDay, promoEnd, promoResults, promoStatus,
+  PRICING, PROMOS, PROMO_KINDS, SEASON, bookCampaign, campaignBlocker, campaignCostUsd, cancelPromo, costOf, clampPrice, dayKind, estimatePassSales, forecast, priceForDay, promoEnd, promoResults, promoStatus,
   resolvedPrices, seasonDate, seasonInputs, setDayOps, setKindPrice, setPassPrice, setTicketPrice, siteById,
   type DayKind, type DayOps, type GameState, type Promo, type PromoKind,
 } from '../sim'
@@ -277,10 +277,11 @@ function MarketingTab({ game, onChange }: { game: GameState; onChange: (g: GameS
   const options = (k: PromoKind) => Array.from({ length: 30 }, (_, i) => firstDay(k) + i).filter((d) => d < SEASON.lengthDays)
   const fc = game.season && inSeason ? forecast(game.season, game.difficulty.snow) : []
   const snowSoon = fc.find((f) => f.lead > 0 && (f.snowLowIn + f.snowHighIn) / 2 >= 6)
+  const site = siteById(game.siteId)
 
   return (
     <>
-      <p className="hint">Campaigns lift day-ticket demand for a few days. They never change what pass holders do. The cost is paid on the first day.</p>
+      <p className="hint">Campaigns lift day-ticket demand for a few days. They never change what pass holders do. Costs grow with your resort and are paid on the first day. Each one comes out a little ahead at its best time and loses money otherwise.</p>
       {snowSoon && <p className="note">Storm forecast for {dayName(game.year, snowSoon.day)}: a powder alert on that day would catch the crowd.</p>}
       <h3 className="group">Booked</h3>
       {game.promos.length === 0 ? <p className="hint">Nothing booked.</p> : (
@@ -292,7 +293,7 @@ function MarketingTab({ game, onChange }: { game: GameState; onChange: (g: GameS
               const open = openId === p.id
               return [
                 <tr key={p.id} className={status === 'scheduled' ? undefined : 'tap'} onClick={status === 'scheduled' ? undefined : () => setOpenId(open ? null : p.id)}>
-                  <th>{PROMOS[p.kind].name}<small>{dates}{status === 'scheduled' ? '' : ' · tap for results'}</small></th>
+                  <th>{PROMOS[p.kind].name}<small>{dates} · {usd(costOf(p))}{status === 'scheduled' ? '' : ' · tap for results'}</small></th>
                   <td>
                     {status === 'scheduled' ? (
                       <span className="promo-act">
@@ -319,19 +320,23 @@ function MarketingTab({ game, onChange }: { game: GameState; onChange: (g: GameS
           {PROMO_KINDS.map((k) => {
             const s = PROMOS[k]
             const day = start[k] ?? firstDay(k)
+            const blocked = campaignBlocker(game, k)
+            if (blocked && s.maxLifts !== undefined) return null
+            const cost = site ? campaignCostUsd(game, site, k) : s.minCostUsd
             return (
               <tr key={k}>
                 <th>
-                  {s.name} <b>{usd(s.costUsd)}</b>
-                  <small>{s.lengthDays}d · book {s.leadDays}d ahead{s.weekdaysOnly ? ' · weekdays only' : ''}. {s.blurb}</small>
+                  {s.name} <b>{usd(cost)}</b>
+                  <small>{s.lengthDays}d · book {s.leadDays}d ahead{s.weekdaysOnly ? ' · weekdays only' : ''}{s.maxLifts !== undefined ? ` · small resorts (${s.maxLifts} lifts or fewer)` : ''}. {s.blurb} <i>Best: {s.bestTime}.</i>{s.luck ? ' Results vary: most runs pay a little, some lose, a few do well.' : ''}</small>
                 </th>
                 <td>
                   <span className="promo-act">
                     <select value={day} aria-label={`${s.name} start`} onChange={(e) => setStart({ ...start, [k]: Number(e.target.value) })}>
                       {options(k).map((d) => <option key={d} value={d}>{dayName(game.year, d)}</option>)}
                     </select>
-                    <button className="btn primary" onClick={() => {
-                      const r = bookPromo(game.promos, k, day, today)
+                    <button className="btn primary" disabled={!site} onClick={() => {
+                      if (!site) return
+                      const r = bookCampaign(game, site, k, day)
                       if (r.ok) { setMsg(null); onChange({ ...game, promos: r.promos }) } else setMsg(r.reason)
                     }}>Book</button>
                   </span>

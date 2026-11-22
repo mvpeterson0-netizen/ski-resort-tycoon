@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  LIVE, answerLiveCard, finishDay, forecast, liveDayDone, playTick, seasonDate, seasonInputs, setLiftMode, setLiveNight, setLiveNightPrice,
+  LIVE, answerAfternoonOffer, answerLiveCard, checkAfternoon, dayEnd, finishDay, setLiveLate, setLiveOvertime, forecast, liveDayDone, playTick, seasonDate, seasonInputs, setLiftMode, setLiveNight, setLiveNightPrice,
   setLivePrice, siteById, startDay, tickTime, priceForDay, PRICING,
   type DayResult, type GameState, type LiftMode, type LiveDay,
 } from '../sim'
@@ -19,13 +19,18 @@ import { buildRoutes, drawSkiers } from './village/skiers'
 import { useResortScene } from './village/useScene'
 
 const SPEEDS = [1, 4, 8] as const
+const AFTERNOON_LABEL = {
+  overtime: 'Overtime crew to close (+15% lift capacity)',
+  late: 'Stay open to 5 pm (crew on overtime)',
+  night: 'Run the night session (5–9 pm)',
+} as const
 /** Real seconds for one 30-minute tick at 1×. */
 const TICK_SEC_AT_1X = 8
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-const clock = (tick: number) => {
-  const [h, m] = tickTime(tick).split(':').map(Number)
+const clock = (tick: number, late = false) => {
+  const [h, m] = tickTime(tick, late).split(':').map(Number)
   return `${h > 12 ? h - 12 : h}:${String(m).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`
 }
 const dateLabel = (iso: string) => {
@@ -49,6 +54,8 @@ function fastForward(game: GameState, site: NonNullable<ReturnType<typeof siteBy
   while (days < maxDays && g.phase === 'season' && !g.bankrupt) {
     if (!g.live) g = startDay(g, site)
     for (let guard = 0; guard < 60 && g.live && !liveDayDone(g, site); guard++) {
+      // Skipping does not stop for the 2 pm advice.
+      if (g.live.afternoonOffer) g = { ...g, live: { ...g.live, afternoonOffer: null } }
       g = playTick(g, site)
       if (g.live?.pending) return { game: g, days, last, results }
     }
@@ -82,6 +89,7 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
   const routes = useMemo(() => buildRoutes(game.lifts, game.trails), [game.lifts, game.trails])
   const done = !!live && liveDayDone(game, site)
   const pending = live?.pending ? live.cards.find((c) => c.id === live.pending) ?? null : null
+  const offer = live?.afternoonOffer ?? null
   // Latest values for timers and the animation loop (written after each render).
   const gameRef = useRef(game)
   const liveRef = useRef<{ live: LiveDay | null }>({ live })
@@ -99,7 +107,12 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
 
   // Playback: one tick per timer, or close the day when it is over.
   useEffect(() => {
-    if (!live || speed <= 0 || pending) return
+    if (!live || speed <= 0 || pending || offer) return
+    // 2 pm: ask about overtime and the night session if either should pay off (pauses until answered).
+    if (live.prep.open && !live.afternoonDone && live.tick === LIVE.afternoonTick && !auto) {
+      onChange(checkAfternoon(gameRef.current, site))
+      return
+    }
     const id = setTimeout(() => {
       const g = gameRef.current
       if (liveDayDone(g, site)) {
@@ -112,7 +125,7 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
       }
     }, (TICK_SEC_AT_1X * 1000) / speed / (done ? 3 : 1))
     return () => clearTimeout(id)
-  }, [live, speed, pending, done, auto, onChange, site])
+  }, [live, speed, pending, offer, done, auto, onChange, site])
 
   const skip = (mode: 'day' | 'week' | 'season') => {
     setSkipMenu(false)
@@ -165,7 +178,7 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         drawResortScene(ctx, scale, sc)
         const l = liveRef.current.live
         // Night session: dusk over the map, lifts and the base lit up.
-        if (l && l.prep.open && l.tick >= LIVE.dayTicks) {
+        if (l && l.prep.open && l.tick >= dayEnd(l)) {
           const S = RENDER_SCALE
           ctx.fillStyle = 'rgba(12, 22, 54, 0.52)'
           ctx.fillRect(0, 0, t.width * S, t.height * S)
@@ -233,10 +246,10 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
               {lights && (
                 <div className="live-row">
                   <span>Night session<small className="block">{live.night ? `5:00–9:00 pm · night ticket ${money(live.nightPriceUsd)}` : 'Off'}</small></span>
-                  <button className={live.night ? 'btn primary' : 'btn'} disabled={live.tick > LIVE.dayTicks} onClick={() => edit((l) => setLiveNight(l, !l.night))}>
+                  <button className={live.night ? 'btn primary' : 'btn'} disabled={live.tick > dayEnd(live)} onClick={() => edit((l) => setLiveNight(l, !l.night))}>
                     {live.night ? 'On' : 'Off'}
                   </button>
-                  {live.night && live.tick <= LIVE.dayTicks && (
+                  {live.night && live.tick <= dayEnd(live) && (
                     <>
                       <button className="btn" aria-label="Lower night price" onClick={() => edit((l) => setLiveNightPrice(l, l.nightPriceUsd - PRICING.stepUsd))}>−</button>
                       <button className="btn" aria-label="Raise night price" onClick={() => edit((l) => setLiveNightPrice(l, l.nightPriceUsd + PRICING.stepUsd))}>+</button>
@@ -244,7 +257,18 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
                   )}
                 </div>
               )}
-              {live.ops.overtime && <p className="hint small">Overtime crew today: more lift capacity, higher payroll.</p>}
+              <div className="live-row">
+                <span>Overtime crew<small className="block">{live.ops.overtime ? '+15% lift capacity, +25% payroll for the rest of the day' : 'Off'}</small></span>
+                <button className={live.ops.overtime ? 'btn primary' : 'btn'} disabled={done || live.tick >= dayEnd(live) || !!live.ops.overtime} onClick={() => edit((l) => setLiveOvertime(l, true))}>
+                  {live.ops.overtime ? 'On' : 'Call in'}
+                </button>
+              </div>
+              <div className="live-row">
+                <span>Open to 5 pm<small className="block">{live.late ? `Extra hour, crew on overtime · twilight ticket ${money(Math.round(live.priceUsd * LIVE.lateTicketMult))}` : 'Lifts close at 4 pm'}</small></span>
+                <button className={live.late ? 'btn primary' : 'btn'} disabled={done || live.tick >= LIVE.dayTicks} onClick={() => edit((l) => setLiveLate(l, !l.late))}>
+                  {live.late ? 'On' : 'Off'}
+                </button>
+              </div>
               {live.promo.dayDemandMult > 1 || live.promo.visitorMult > 1 ? <p className="hint small">A marketing campaign is running today.</p> : null}
             </div>
           )}
@@ -278,7 +302,7 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
         <div className="hud-row">
           <b>{live ? dateLabel(live.prep.date) : season ? dateLabel(seasonDate(game.year, season.day).toISOString().slice(0, 10)) : ''}</b>
           <span>
-            {live && live.prep.open ? (done ? 'Closed for the day' : clock(live.tick)) : live ? (live.prep.stormClosed ? 'Closed: storm hold' : 'Not open yet') : '—'}
+            {live && live.prep.open ? (done ? 'Closed for the day' : clock(live.tick, !!live.late)) : live ? (live.prep.stormClosed ? 'Closed: storm hold' : 'Not open yet') : '—'}
           </span>
           <button className="hud-menu" aria-label="Back to the resort" onClick={onExit}>⌂</button>
         </div>
@@ -319,7 +343,7 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
       {pending && live && (
         <div className="card-overlay" role="dialog" aria-label={pending.title}>
           <div className="event-card">
-            <small>{clock(pending.tick)}</small>
+            <small>{clock(pending.tick, !!live.late)}</small>
             <h3>{pending.title}</h3>
             <p>{pending.text}</p>
             {pending.options.map((o) => (
@@ -328,6 +352,28 @@ export function LiveDayScreen({ game, onChange, onExit, onCalendar }: {
                 <small>{o.detail}</small>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+      {offer && live && !pending && (
+        <div className="card-overlay" role="dialog" aria-label="Afternoon check">
+          <div className="event-card">
+            <small>{clock(live.tick, !!live.late)} · afternoon check</small>
+            <h3>Busy afternoon: worth staying on?</h3>
+            <p>
+              {offer.turnedAwaySoFar > 0 ? `${offer.turnedAwaySoFar.toLocaleString()} skiers have given up at the lifts so far. ` : ''}
+              Estimates for the rest of today, if later events go the usual way:
+            </p>
+            {offer.options.map((o) => (
+              <button key={o.id} className="btn primary" onClick={() => onChange(answerAfternoonOffer(game, o.id))}>
+                <b>{o.id === 'combo' ? `All of them: ${(o.parts ?? []).map((p) => AFTERNOON_LABEL[p].toLowerCase()).join(' + ')}` : AFTERNOON_LABEL[o.id]}</b>
+                <small>About {o.gainUsd >= 0 ? '+' : '−'}{money(Math.abs(o.gainUsd))} today{o.extraGuests > 0 ? ` · ~${o.extraGuests} more skiers` : ''}</small>
+              </button>
+            ))}
+            <button className="btn" onClick={() => onChange(answerAfternoonOffer(game, 'none'))}>
+              <b>No thanks</b>
+              <small>Keep the day as planned</small>
+            </button>
           </div>
         </div>
       )}

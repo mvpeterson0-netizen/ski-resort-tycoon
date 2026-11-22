@@ -11,10 +11,10 @@
  */
 import { NEUTRAL_EFFECTS } from './amenities'
 import {
-  answerCard, finishLiveDay, isDayDone, setLiftMode, setLiveNight, setLiveNightPrice, setLivePrice, startLiveDay, tickLiveDay,
+  answerCard, finishLiveDay, isDayDone, setLiftMode, setLiveLate, setLiveNight, setLiveOvertime, setLiveNightPrice, setLivePrice, startLiveDay, tickLiveDay,
   type LiveAction, type LiveContext, type LiveDay,
 } from './liveDay'
-import { PROMOS, promoEffects, promoEnd, type PromoKind } from './promos'
+import { PROMOS, costOf, promoEffects, promoEnd, type PromoKind } from './promos'
 import { dayKind } from './pricing'
 import { seasonDate, type DayResult, type SeasonInputs, type SeasonState } from './season'
 
@@ -88,6 +88,8 @@ interface Override {
   ignoreLifts?: boolean
   night?: boolean
   overtime?: boolean
+  /** Extended hours (to 5 pm) on from the start, or off all day. */
+  late?: boolean
   snowPush?: boolean
   /** Choose these options on event cards instead of the player's. */
   cards?: Record<string, string>
@@ -103,6 +105,7 @@ export function replayDay(s: SeasonState, inp: SeasonInputs, base: LiveContext, 
     ...(o.snowPush !== undefined ? { snowPush: o.snowPush } : {}),
   }
   let l = startLiveDay(s, inp, { ...base, priceUsd: o.price ?? base.priceUsd, promo, ops })
+  if (o.late) l = setLiveLate(l, true)
   const applied = new Set<LiveAction>()
   for (let guard = 0; guard < 400 && !isDayDone(l, inp); guard++) {
     for (const a of log) {
@@ -112,6 +115,8 @@ export function replayDay(s: SeasonState, inp: SeasonInputs, base: LiveContext, 
       else if (a.kind === 'nightPrice') l = setLiveNightPrice(l, a.value)
       else if (a.kind === 'lift' && !o.ignoreLifts) l = setLiftMode(l, a.lift, a.mode)
       else if (a.kind === 'night' && o.night === undefined) l = setLiveNight(l, a.on)
+      else if (a.kind === 'overtime' && o.overtime === undefined) l = setLiveOvertime(l, a.on)
+      else if (a.kind === 'late' && o.late === undefined) l = setLiveLate(l, a.on)
     }
     l = tickLiveDay(l, inp)
     if (l.pending) {
@@ -188,7 +193,7 @@ export function computeImpact(s: SeasonState, inp: SeasonInputs, live: LiveDay, 
   for (const kd of kinds) {
     const without = (base.promos ?? []).filter((p) => p.kind !== kd)
     const r = replayDay(s, inp, base, log, { promos: without }).result
-    const costToday = active.filter((p) => p.kind === kd && p.startDay === s.day).reduce((a) => a + PROMOS[kd].costUsd, 0)
+    const costToday = active.filter((p) => p.kind === kd && p.startDay === s.day).reduce((a, p) => a + costOf(p), 0)
     const extraGuests = actual.dayTicketGuests - r.dayTicketGuests
     const extraRev = revenue(actual) - revenue(r)
     const before = net - r.netUsd + costToday
@@ -232,8 +237,8 @@ export function computeImpact(s: SeasonState, inp: SeasonInputs, live: LiveDay, 
     }
   }
 
-  // ---- overtime crew ----
-  if (base.ops.overtime) {
+  // ---- overtime crew (planned for the day, or called in during it) ----
+  if (base.ops.overtime || live.ops.overtime) {
     const r = replayDay(s, inp, base, log, { overtime: false }).result
     const d = net - r.netUsd
     const more = Math.round(actual.guests - r.guests)
@@ -247,6 +252,20 @@ export function computeImpact(s: SeasonState, inp: SeasonInputs, live: LiveDay, 
     const r = replayDay(s, inp, base, log, { overtime: true }).result
     const d = r.netUsd - net
     if (d > IMPACT.minItemUsd) items.push({ id: 'overtime', label: 'Overtime crew (not used)', netUsd: -d, missed: true, detail: `${Math.round(lifts)} skiers gave up at the lifts. A crew would have carried about ${Math.round(r.guests - actual.guests)} more: ${k(d)} net.` })
+  }
+
+  // ---- extended hours (lifts to 5 pm, crew on overtime) ----
+  if (live.late) {
+    const r = replayDay(s, inp, base, log, { late: false }).result
+    const d = net - r.netUsd
+    items.push({
+      id: 'late', label: 'Open to 5 pm', netUsd: d,
+      detail: `${Math.round(actual.guests - r.guests)} late skiers and ${k(revenue(actual) - revenue(r))} in sales, for ${k(actual.costUsd - r.costUsd)} of overtime and running costs. Net ${signedK(d)}.`,
+    })
+  } else {
+    const r = replayDay(s, inp, base, log, { late: true }).result
+    const d = r.netUsd - net
+    if (d > IMPACT.minItemUsd) items.push({ id: 'late', label: 'Open to 5 pm (not used)', netUsd: -d, missed: true, detail: `Staying open an extra hour would have brought about ${Math.round(r.guests - actual.guests)} more skiers and ${k(d)} net.` })
   }
 
   // ---- snowmaking push ----

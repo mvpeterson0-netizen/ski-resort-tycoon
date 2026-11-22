@@ -19,8 +19,8 @@ const dateOf = (iso: string) => {
   return { long: `${WEEKDAYS[d.getUTCDay()]}, ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`, short: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`, wd: WEEKDAYS[d.getUTCDay()].slice(0, 3) }
 }
 const kindOf = (d: DayResult) => (d.holiday ? 'holiday' : d.weekday === 0 || d.weekday === 6 ? 'weekend' : 'weekday')
-const clock = (tick: number) => {
-  const min = tick < 14 ? 9 * 60 + tick * 30 : 17 * 60 + (tick - 14) * 30
+const clock = (tick: number, dayEnd = 14) => {
+  const min = tick < dayEnd ? 9 * 60 + tick * 30 : 17 * 60 + (tick - dayEnd) * 30
   const h = Math.floor(min / 60)
   return `${h > 12 ? h - 12 : h}${min % 60 ? ':30' : ''}${h >= 12 ? 'p' : 'a'}`
 }
@@ -36,17 +36,18 @@ function R({ l, v, note, tone, sub }: { l: string; v?: string; note?: string; to
 }
 
 /** Guests arriving through the day as thin bars. */
-function Arrivals({ hourly }: { hourly: number[] }) {
+function Arrivals({ hourly, late }: { hourly: number[]; late?: boolean }) {
   const max = Math.max(1, ...hourly)
-  const dayTicks = Math.min(14, hourly.length)
+  const end = 14 + (late ? 2 : 0)
+  const dayTicks = Math.min(end, hourly.length)
   return (
     <div className="arrivals" role="img" aria-label="Guests arriving through the day">
       <div className="bars">
-        {hourly.map((v, i) => <i key={i} className={i >= 14 ? 'night' : ''} style={{ height: `${Math.max(6, (v / max) * 100)}%` }} />)}
+        {hourly.map((v, i) => <i key={i} className={i >= end ? 'night' : i >= 14 ? 'late' : ''} style={{ height: `${Math.max(6, (v / max) * 100)}%` }} />)}
       </div>
       <div className="arrivals-axis">
-        <span>{clock(0)}</span><span>{clock(Math.floor(dayTicks / 2))}</span><span>{clock(dayTicks - 1)}</span>
-        {hourly.length > 14 && <span>night</span>}
+        <span>{clock(0)}</span><span>{clock(Math.floor(dayTicks / 2), end)}</span><span>{clock(dayTicks - 1, end)}</span>
+        {hourly.length > end && <span>night</span>}
       </div>
     </div>
   )
@@ -160,7 +161,7 @@ function DayDetail({ d, vsAvg, game }: { d: DayResult; vsAvg: number | null; gam
           </tbody>
         </table>
       </div>
-      {d.hourly && d.hourly.length > 0 && <Arrivals hourly={d.hourly} />}
+      {d.hourly && d.hourly.length > 0 && <Arrivals hourly={d.hourly} late={d.late} />}
 
       {d.impact && d.impact.quotes.length > 0 && (
         <>

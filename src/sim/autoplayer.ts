@@ -30,6 +30,8 @@ export interface CampaignOptions {
   /** Growth caps per owned parcel. */
   liftsPerParcel?: number
   trailKmPerParcel?: number
+  /** Called with the game at the start of each season (tests use it to try decisions on a real resort). */
+  onSeasonStart?: (g: GameState) => void
 }
 
 export interface YearRow {
@@ -86,7 +88,7 @@ function addParcel(g: GameState, price: number): GameState {
   }
 }
 
-type Opts = Required<Omit<CampaignOptions, 'difficulty'>> & { difficulty?: DifficultySettings }
+type Opts = Required<Omit<CampaignOptions, 'difficulty' | 'onSeasonStart'>> & { difficulty?: DifficultySettings }
 
 /** Cash reserve: the larger of the configured buffer and one year of fixed costs. */
 const reserve = (g: GameState, o: Opts) => Math.max(o.bufferUsd, fixedCosts(g))
@@ -172,6 +174,7 @@ export function runCampaign(opts: CampaignOptions): YearRow[] {
   const rows: YearRow[] = []
   for (let y = 0; y < o.years && !g.bankrupt; y++) {
     g = beginSeason(g, o.site)
+    o.onSeasonStart?.(g)
     while (g.phase === 'season' && !g.bankrupt) g = advanceDay(g, o.site).game
     if (g.bankrupt && g.phase === 'season') {
       // Went under mid-season: no year-end report, record the failure for this year.

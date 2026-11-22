@@ -17,7 +17,7 @@ import { financeModifiers, snowModifiers } from './difficultySettings'
 import { rollDay, type EventState, type SeasonEvent } from './events'
 import type { DayOps } from './pricing'
 import type { DayImpact } from './impact'
-import { NO_PROMO, type Promo, type PromoEffects } from './promos'
+import { MAX_DEMAND_MULT, NO_PROMO, POWDER_DAY_IN, type Promo, type PromoEffects } from './promos'
 import { createRng } from './rng'
 import {
   SEASON, conditionsScore, isHoliday, liftComfortGuests, seasonDate, appealOf, dayFactorOf,
@@ -49,6 +49,20 @@ export const LIVE = {
   overtimePayrollPremium: 0.25,
   snowPushIn: 4,
   snowPushCostMult: 0.8,
+  /**
+   * Extended hours: keep the lifts running to 5:00 pm with the crew on overtime. Late arrivals
+   * (after-work locals, half-day skiers) are extra demand, as a share of the day's arrivals
+   * profile; they pay a twilight ticket. The crew is paid time-and-a-half for the extra hour.
+   */
+  lateTicks: 2,
+  lateWeights: [6, 5],
+  lateTicketMult: 0.6,
+  latePayrollMult: 1.5,
+  lateOverheadMult: 0.5,
+  /** The afternoon check (overtime / extended hours / night session advice) comes up at this tick: 2:00 pm. */
+  afternoonTick: 10,
+  /** Suggest an option only if it should add at least this much to today's net. */
+  afternoonMinGainUsd: 200,
   /** Event cards fire in this tick range (group offers earlier). */
   cardTicks: [2, 11] as const,
   offerTicks: [1, 4] as const,
@@ -58,6 +72,8 @@ const sum = (a: readonly number[]) => a.reduce((s, v) => s + v, 0)
 const norm = (w: readonly number[]) => { const t = sum(w); return w.map((v) => v / t) }
 export const DAY_W = norm(LIVE.dayWeights)
 export const NIGHT_W = norm(LIVE.nightWeights)
+/** Late (extended-hours) arrivals, on the same scale as the day's arrival shares. */
+export const LATE_W = LIVE.lateWeights.map((v) => v / sum(LIVE.dayWeights))
 
 /** Peak share of a session's guests on the hill at once, given how long they stay. */
 function peakShare(w: number[], stay: number): number {
@@ -71,8 +87,9 @@ const NIGHT_PEAK = peakShare(NIGHT_W, LIVE.nightStayTicks)
 export type LiftMode = 'open' | 'slow' | 'closed'
 
 /** Clock time of a tick, e.g. "9:30" or "17:00". */
-export function tickTime(tick: number): string {
-  const min = tick < LIVE.dayTicks ? LIVE.dayStartMin + tick * LIVE.tickMin : LIVE.nightStartMin + (tick - LIVE.dayTicks) * LIVE.tickMin
+export function tickTime(tick: number, late = false): string {
+  const end = LIVE.dayTicks + (late ? LIVE.lateTicks : 0)
+  const min = tick < end ? LIVE.dayStartMin + tick * LIVE.tickMin : LIVE.nightStartMin + (tick - end) * LIVE.tickMin
   return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`
 }
 
@@ -164,6 +181,8 @@ export interface LiveDay {
   tick: number
   priceUsd: number
   night: boolean
+  /** Extended hours: lifts run to 5:00 pm today (absent on older saved days = no). */
+  late?: boolean
   nightPriceUsd: number
   /** The player's lift settings. */
   lifts: LiftMode[]
@@ -183,6 +202,10 @@ export interface LiveDay {
   base?: LiveContext
   /** Everything the player decided, in order. Absent on a day saved before this was recorded. */
   log?: LiveAction[]
+  /** The 2 pm overtime / night check has been done today. */
+  afternoonDone?: boolean
+  /** Options from the 2 pm check waiting for an answer (the live screen pauses on it). */
+  afternoonOffer?: AfternoonCheck | null
 }
 
 export interface LiveContext {
@@ -202,15 +225,20 @@ export type LiveAction =
   | { tick: number; kind: 'nightPrice'; value: number }
   | { tick: number; kind: 'lift'; lift: number; mode: LiftMode }
   | { tick: number; kind: 'night'; on: boolean }
+  | { tick: number; kind: 'overtime'; on: boolean }
+  | { tick: number; kind: 'late'; on: boolean }
   | { tick: number; kind: 'card'; cardId: string; option: string }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const END = 99
 
+/** First tick after the day session: 16:00, or 17:00 with extended hours. */
+export const dayEnd = (live: LiveDay) => LIVE.dayTicks + (live.late ? LIVE.lateTicks : 0)
+
 export function totalTicks(live: LiveDay, inp: SeasonInputs): number {
   if (!live.prep.open) return 0
-  return LIVE.dayTicks + (live.night && (inp.amenity ?? NEUTRAL_EFFECTS).nightShare > 0 ? LIVE.nightTicks : 0)
+  return dayEnd(live) + (live.night && (inp.amenity ?? NEUTRAL_EFFECTS).nightShare > 0 ? LIVE.nightTicks : 0)
 }
 export const isDayDone = (live: LiveDay, inp: SeasonInputs) => live.tick >= totalTicks(live, inp)
 
@@ -369,8 +397,10 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
 
   const D = SEASON.demand, P = SEASON.passes, M = SEASON.money
   const t = live.tick
-  const night = t >= LIVE.dayTicks
-  const w = night ? NIGHT_W[t - LIVE.dayTicks] : DAY_W[t]
+  const end = dayEnd(live)
+  const night = t >= end
+  const late = !night && t >= LIVE.dayTicks
+  const w = night ? NIGHT_W[t - end] : late ? LATE_W[t - LIVE.dayTicks] : DAY_W[t]
   const prep = live.prep
   const amen = inp.amenity ?? NEUTRAL_EFFECTS
   const staff = inp.staff ?? FULL_STAFF
@@ -395,8 +425,9 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   let wantDay: number, wantPass: number
   if (!night) {
     const priceFactor = Math.pow(D.referencePriceUsd / live.priceUsd, D.priceElasticity)
-    wantDay = w * (prep.locals * (1 - prep.passAdoption) + prep.visitors * live.promo.visitorMult)
-      * live.promo.dayDemandMult * priceFactor * fx.dayDemandMult * condScale * outage
+    const powder = prep.newSnowIn >= POWDER_DAY_IN ? live.promo.powderMult ?? 1 : 1
+    wantDay = w * (prep.locals * (1 - prep.passAdoption) * (live.promo.localMult ?? 1) + prep.visitors * live.promo.visitorMult)
+      * Math.min(MAX_DEMAND_MULT, live.promo.dayDemandMult * powder) * priceFactor * fx.dayDemandMult * condScale * outage
     wantPass = w * prep.locals * prep.passAdoption * P.frequencyBoost * condScale * outage
   } else {
     const market = prep.locals + prep.visitors
@@ -414,7 +445,7 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   // A booked group arrives over a few ticks at a flat price.
   const group = !night && t < fx.groupUntil ? fx.groupPerTick : 0
 
-  const price = night ? live.nightPriceUsd : live.priceUsd
+  const price = night ? live.nightPriceUsd : late ? Math.round(live.priceUsd * LIVE.lateTicketMult) : live.priceUsd
   const ticketRev = dayG * price * (night ? 1 : live.promo.priceMult) + group * fx.groupPriceUsd
   const allGuests = guests + group
   const food = allGuests * M.foodPerGuestUsd * amen.foodMult
@@ -424,7 +455,15 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
   const ticks = night ? LIVE.nightTicks : LIVE.dayTicks
   const liftDaily = inp.lifts.reduce((s, l, i) => s + M.liftDailyCostUsd[l.type] * (live.lifts[i] === 'slow' ? LIVE.slowCost : factors[i] > 0 ? 1 : 0), 0)
   const guestCost = finMod.costs * allGuests * M.variableCostPerGuestUsd
-  const tickParts: CostParts = !night
+  const tickParts: CostParts = late
+    ? {
+        // The extra hour: the crew on time-and-a-half, lifts running, part of the base overhead.
+        payroll: (staff.payrollUsd * LIVE.latePayrollMult * (1 + (live.ops.overtime ? LIVE.overtimePayrollPremium : 0))) / ticks,
+        lifts: (finMod.costs * liftDaily) / ticks,
+        overhead: (finMod.costs * LIVE.lateOverheadMult * (M.overheadOpenUsd + amen.dailyCostUsd)) / ticks,
+        snowmaking: 0, guests: guestCost, lights: 0,
+      }
+    : !night
     ? {
         payroll: (staff.payrollUsd * (1 + (live.ops.overtime ? LIVE.overtimePayrollPremium : 0))) / ticks,
         lifts: (finMod.costs * liftDaily) / ticks,
@@ -446,8 +485,9 @@ export function tickLiveDay(live: LiveDay, inp: SeasonInputs): LiveDay {
 
   // Lift line: guests on the hill against the lift capacity right now.
   const stay = night ? LIVE.nightStayTicks : LIVE.dayStayTicks
-  const session = live.rows.filter((r) => (night ? r.tick >= LIVE.dayTicks : r.tick < LIVE.dayTicks))
+  const session = live.rows.filter((r) => (night ? r.tick >= end : r.tick < end))
   const onHill = sum(session.slice(-(stay - 1)).map((r) => r.arrived)) + allGuests
+  // Late guests arrive while the day crowd thins out; the day's peak share still sizes the line.
   const peak = night ? NIGHT_PEAK : DAY_PEAK
   const load = comfort > 0 ? onHill / (comfort * peak) : 4
   const queueMin = Math.round(Math.max(0, load - 0.7) * 25)
@@ -530,6 +570,7 @@ export function finishLiveDay(live: LiveDay, s: SeasonState, inp: SeasonInputs, 
         snowmaking: Math.round(a.parts.snowmaking), guests: Math.round(a.parts.guests), lights: Math.round(a.parts.lights),
       },
     } : {}),
+    ...(open && live.late ? { late: true } : {}),
     ...(open ? { peakOnHill: Math.max(0, ...live.rows.map((r) => r.onHill)), hourly: live.rows.map((r) => Math.round(r.arrived)) } : {}),
     ...(impact ? { impact } : {}),
   }
@@ -563,6 +604,96 @@ export function setLiftMode(live: LiveDay, lift: number, mode: LiftMode): LiveDa
 }
 /** The night session can be switched until it starts. */
 export function setLiveNight(live: LiveDay, on: boolean): LiveDay {
-  return live.tick <= LIVE.dayTicks ? logged(live, { ...live, night: on }, { tick: live.tick, kind: 'night', on }) : live
+  return live.tick <= dayEnd(live) ? logged(live, { ...live, night: on }, { tick: live.tick, kind: 'night', on }) : live
 }
 
+
+/** Overtime crew from now on: more lift capacity, payroll premium on the remaining day hours. */
+export function setLiveOvertime(live: LiveDay, on: boolean): LiveDay {
+  if (live.tick >= dayEnd(live) || !!live.ops.overtime === on) return live
+  return logged(live, { ...live, ops: { ...live.ops, overtime: on } }, { tick: live.tick, kind: 'overtime', on })
+}
+
+/** Extended hours (lifts to 5:00 pm, crew on overtime): can be switched until 4:00 pm. */
+export function setLiveLate(live: LiveDay, on: boolean): LiveDay {
+  if (live.tick >= LIVE.dayTicks || !!live.late === on) return live
+  return logged(live, { ...live, late: on }, { tick: live.tick, kind: 'late', on })
+}
+
+// ---- the 2 pm check ----
+
+export interface AfternoonOption {
+  /** 'combo' = every option that pays on its own, together. */
+  id: 'overtime' | 'late' | 'night' | 'combo'
+  /** For 'combo': what it switches on. */
+  parts?: ('overtime' | 'late' | 'night')[]
+  /** Estimated change to today's net from switching it on now. */
+  gainUsd: number
+  /** Extra guests in the estimate. */
+  extraGuests: number
+}
+
+export interface AfternoonCheck {
+  options: AfternoonOption[]
+  /** Guests turned away so far today (why overtime might help). */
+  turnedAwaySoFar: number
+}
+
+const netOf = (l: LiveDay) => l.acc.ticketRev + l.acc.food + l.acc.extras + l.acc.eventIncome - l.acc.cost - l.acc.eventCost
+
+/** Is it time for the 2 pm check (and has it not been done yet)? */
+export const afternoonDue = (live: LiveDay) =>
+  live.prep.open && !live.afternoonDone && !live.pending && live.tick === LIVE.afternoonTick
+
+/** Run the 2 pm check if it is due: marks it done and, if anything should pay off, leaves an offer. */
+export function runAfternoonCheck(live: LiveDay, inp: SeasonInputs): LiveDay {
+  if (!afternoonDue(live)) return live
+  const check = afternoonCheck(live, inp)
+  return { ...live, afternoonDone: true, afternoonOffer: check.options.length ? check : null }
+}
+
+/** Answer the 2 pm offer: switch on what was chosen ('none' declines). */
+export function answerAfternoon(live: LiveDay, choice: AfternoonOption['id'] | 'none'): LiveDay {
+  let l: LiveDay = { ...live, afternoonOffer: null }
+  if (choice === 'none') return l
+  const parts = choice === 'combo' ? live.afternoonOffer?.options.find((o) => o.id === 'combo')?.parts ?? [] : [choice]
+  return applyParts(l, parts)
+}
+
+/**
+ * Would calling in an overtime crew for the rest of the day, staying open to 5 pm (extended
+ * hours, crew on overtime), or running the night session tonight, pay off? Plays the rest of the day out each way (later event cards on their default
+ * option) and compares today's net. It is an estimate: the player may still change prices or
+ * answer cards differently. Only options worth at least `afternoonMinGainUsd` are returned.
+ */
+export function afternoonCheck(live: LiveDay, inp: SeasonInputs): AfternoonCheck {
+  const lights = (inp.amenity ?? NEUTRAL_EFFECTS).nightShare > 0
+  const base = runToEnd(live, inp)
+  const options: AfternoonOption[] = []
+  const tryIt = (id: AfternoonOption['id'], parts: Single[]) => {
+    const end = runToEnd(applyParts(live, parts), inp)
+    const gainUsd = Math.round(netOf(end) - netOf(base))
+    return { id, gainUsd, extraGuests: Math.round(end.acc.guests - base.acc.guests), ...(id === 'combo' ? { parts } : {}) }
+  }
+  const singles: Single[] = []
+  if (!live.ops.overtime) singles.push('overtime')
+  if (!live.late) singles.push('late')
+  if (lights && !live.night) singles.push('night')
+  for (const id of singles) {
+    const o = tryIt(id, [id])
+    if (o.gainUsd >= LIVE.afternoonMinGainUsd) options.push(o)
+  }
+  // Everything that pays on its own, together, if that beats the best single option.
+  if (options.length >= 2) {
+    const combo = tryIt('combo', options.map((o) => o.id as Single))
+    if (combo.gainUsd > Math.max(...options.map((o) => o.gainUsd))) options.push(combo)
+  }
+  return { options, turnedAwaySoFar: Math.round(live.rows.reduce((s, r) => s + r.turnedAway, 0)) }
+}
+
+type Single = 'overtime' | 'late' | 'night'
+function applyParts(live: LiveDay, parts: Single[]): LiveDay {
+  let l = live
+  for (const p of parts) l = p === 'overtime' ? setLiveOvertime(l, true) : p === 'late' ? setLiveLate(l, true) : setLiveNight(l, true)
+  return l
+}

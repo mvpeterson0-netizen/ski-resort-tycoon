@@ -377,6 +377,7 @@ small.block { display: block; font-size: 0.75rem; color: var(--muted); }
 .arrivals .bars { display: flex; align-items: flex-end; gap: 2px; height: 30px; }
 .arrivals .bars i { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.85; }
 .arrivals .bars i.night { background: #5b4ba0; }
+.arrivals .bars i.late { background: var(--blue, #3b6fb6); opacity: 0.6; }
 .arrivals-axis { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--muted); margin-top: 2px; }
 
 /* Booked campaigns: status and results */

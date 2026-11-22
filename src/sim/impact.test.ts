@@ -6,7 +6,7 @@ import { IMPACT, computeImpact, replayDay } from './impact'
 import {
   answerCard, finishLiveDay, isDayDone as isDone, plainContext, runToEnd, setLiftMode, setLivePrice, startLiveDay, tickLiveDay, type LiveContext, type LiveDay,
 } from './liveDay'
-import { bookPromo, promoEffects } from './promos'
+import { PROMOS, bookPromo, promoEffects } from './promos'
 import { startSeason, simulateDay, type SeasonInputs, type SeasonState } from './season'
 import { SITES } from './sites'
 import { snowmakingEffects } from './snowmaking'
@@ -160,7 +160,7 @@ describe('campaign feedback', () => {
     expect(imp.promos).toHaveLength(1)
     expect(imp.promos![0].kind).toBe('twoForOne')
     expect(imp.promos![0].extraGuests).toBeGreaterThan(50)
-    expect(imp.promos![0].costTodayUsd).toBe(6000)
+    expect(imp.promos![0].costTodayUsd).toBe(PROMOS.twoForOne.minCostUsd)
     const item = imp.items.find((i) => i.id === 'promo-twoForOne')!
     expect(item.detail).toMatch(/extra day skiers/)
     expect(item.detail).toMatch(/paid today/)

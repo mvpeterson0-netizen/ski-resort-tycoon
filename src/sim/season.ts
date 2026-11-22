@@ -173,6 +173,8 @@ export interface DayResult {
   eventCostUsd: number
   /** Race fees (included in netUsd). */
   eventIncomeUsd: number
+  /** Lifts ran to 5 pm (extended hours); hourly then has two extra day ticks before any night ones. */
+  late?: boolean
   /** Night session (included in guests and revenue above). */
   nightGuests?: number
   nightRevenueUsd?: number

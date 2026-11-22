@@ -204,7 +204,7 @@ describe('day plans and promos', () => {
     const deal = finishLiveDay(runToEnd(startLiveDay(s, big, { ...plainContext(s), promo }), big), s, big).result
     expect(deal.dayTicketGuests).toBeGreaterThan(base.dayTicketGuests * 1.4)
     expect(deal.ticketRevenueUsd / deal.dayTicketGuests).toBeLessThan((base.ticketRevenueUsd / base.dayTicketGuests) * 0.7)
-    expect(deal.marketingUsd).toBe(PROMOS.twoForOne.costUsd)
+    expect(deal.marketingUsd).toBe(PROMOS.twoForOne.minCostUsd)
     expect(deal.costUsd).toBeGreaterThan(base.costUsd)
   })
 })
